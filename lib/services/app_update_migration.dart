@@ -14,7 +14,7 @@ import 'storage_migration_service.dart';
 const appUpdateMigrationVersionKey = 'app_update_migration_version';
 
 /// 当前已注册的应用升级迁移版本。
-const currentAppUpdateMigrationVersion = 9;
+const currentAppUpdateMigrationVersion = 10;
 
 /// 删除已废弃的 TTS 模型下载状态缓存；模型状态现在以安装清单和文件校验为准。
 Future<void> removeLegacyTtsModelDownloadFlags(SharedPreferences prefs) async {
@@ -223,15 +223,21 @@ List<AppUpdateMigration> buildAppUpdateMigrations(
       name: 'dictionary_install_layout_migration',
       action: migrateLegacyDictionaryInstallLayout,
     ),
+    // 旧发音包布局迁移已由 v10 的整体删除取代；保留版本位以维持迁移链连续。
     AppUpdateMigration(
       version: 8,
       name: 'pronunciation_install_layout_migration',
-      action: migrateLegacyPronunciationInstallLayout,
+      action: () async {},
     ),
     AppUpdateMigration(
       version: 9,
       name: 'asr_model_install_layout_migration',
       action: () => migrateLegacyAsrModelInstallLayout(prefs),
+    ),
+    AppUpdateMigration(
+      version: 10,
+      name: 'remove_offline_pronunciation_library',
+      action: removeOfflinePronunciationLibrary,
     ),
   ];
 }
