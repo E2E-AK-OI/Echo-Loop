@@ -8,9 +8,11 @@ import '../features/audio_import/audio_import_provider.dart';
 import '../features/audio_import/subtitle_pairing.dart';
 import '../features/baidu_netdisk/models/cloud_drive_models.dart';
 import '../features/baidu_netdisk/models/baidu_account_profile.dart';
+import '../features/baidu_netdisk/models/baidu_oauth_result.dart';
 import '../features/baidu_netdisk/providers/baidu_netdisk_import_controller.dart';
 import '../features/baidu_netdisk/providers/baidu_netdisk_import_tasks_provider.dart';
 import '../features/baidu_netdisk/providers/baidu_netdisk_providers.dart';
+import '../features/baidu_netdisk/screens/baidu_oauth_webview_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'add_audio_dialog.dart';
@@ -800,7 +802,7 @@ class _BaiduNetdiskPanelState extends ConsumerState<_BaiduNetdiskPanel> {
               child: switch (state.phase) {
                 BaiduNetdiskImportPhase.idle ||
                 BaiduNetdiskImportPhase.authorizationRequired =>
-                  _BaiduAuthPrompt(onAuthorize: controller.authorizeAndLoad),
+                  _BaiduAuthPrompt(controller: controller),
                 BaiduNetdiskImportPhase.authorizing => _BaiduBusyPanel(
                   message: l10n.baiduNetdiskWaitingAuthorization,
                 ),
@@ -854,37 +856,148 @@ class _BaiduNetdiskPanelState extends ConsumerState<_BaiduNetdiskPanel> {
   }
 }
 
-class _BaiduAuthPrompt extends StatelessWidget {
-  const _BaiduAuthPrompt({required this.onAuthorize});
+class _BaiduAuthPrompt extends ConsumerStatefulWidget {
+  const _BaiduAuthPrompt({required this.controller});
 
-  final VoidCallback onAuthorize;
+  final BaiduNetdiskImportController controller;
+
+  @override
+  ConsumerState<_BaiduAuthPrompt> createState() => _BaiduAuthPromptState();
+}
+
+class _BaiduAuthPromptState extends ConsumerState<_BaiduAuthPrompt> {
+  final TextEditingController _appKeyController = TextEditingController();
+  bool _loadingAppKey = true;
+  bool _connecting = false;
+  String? _appKeyError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppKey();
+  }
+
+  @override
+  void dispose() {
+    _appKeyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAppKey() async {
+    try {
+      final appKey = await ref.read(baiduAppKeyStoreProvider).read();
+      if (!mounted) return;
+      setState(() {
+        if (appKey != null) _appKeyController.text = appKey;
+        _loadingAppKey = false;
+      });
+    } catch (_) {
+      // 读取失败不阻塞用户重新填写。
+      if (!mounted) return;
+      setState(() => _loadingAppKey = false);
+    }
+  }
+
+  Future<void> _connect() async {
+    if (_connecting) return;
+    final l10n = AppLocalizations.of(context)!;
+    final appKey = _appKeyController.text.trim();
+    if (appKey.isEmpty) {
+      setState(() => _appKeyError = l10n.baiduNetdiskAppKeyRequired);
+      return;
+    }
+    setState(() {
+      _appKeyError = null;
+      _connecting = true;
+    });
+    try {
+      await ref.read(baiduAppKeyStoreProvider).write(appKey);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _appKeyError = l10n.baiduNetdiskAppKeySaveFailed;
+        _connecting = false;
+      });
+      return;
+    }
+    if (!mounted) return;
+    final oauth = ref.read(baiduImplicitOAuthProvider);
+    try {
+      await widget.controller.authorizeAndLoad(
+        appKey: appKey,
+        authorize: (request) async {
+          if (!mounted) return const BaiduOAuthCancelled();
+          final result = await Navigator.of(context).push<BaiduOAuthResult>(
+            MaterialPageRoute<BaiduOAuthResult>(
+              builder: (_) =>
+                  BaiduOAuthWebViewScreen(request: request, oauth: oauth),
+            ),
+          );
+          return result ?? const BaiduOAuthCancelled();
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _connecting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(l10n.baiduNetdiskConnectTitle, style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text(
-          l10n.baiduNetdiskConnectDescription,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.baiduNetdiskConnectTitle,
+            style: theme.textTheme.titleMedium,
           ),
-        ),
-        const SizedBox(height: AppSpacing.l),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: onAuthorize,
-            icon: const Icon(Icons.open_in_browser),
-            label: Text(l10n.baiduNetdiskConnectAction),
+          const SizedBox(height: 8),
+          Text(
+            l10n.baiduNetdiskConnectDescription,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: AppSpacing.m),
+          TextField(
+            controller: _appKeyController,
+            enabled: !_loadingAppKey && !_connecting,
+            autocorrect: false,
+            enableSuggestions: false,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _connect(),
+            decoration: InputDecoration(
+              labelText: l10n.baiduNetdiskAppKeyLabel,
+              hintText: l10n.baiduNetdiskAppKeyHint,
+              helperText: l10n.baiduNetdiskAppKeyHelp,
+              helperMaxLines: 3,
+              errorText: _appKeyError,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.m),
+          Text(
+            l10n.baiduNetdiskAuthorizeNote,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.l),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _loadingAppKey || _connecting ? null : _connect,
+              icon: const Icon(Icons.open_in_browser),
+              label: Text(l10n.baiduNetdiskConnectAction),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

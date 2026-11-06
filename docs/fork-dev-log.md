@@ -5,14 +5,14 @@
 > 基线提交：`5df50638`（FIX: 百度网盘导入改为入队时整批获取 dlink，切后台后可接力下载）
 > 变更时间：2026-11-05 至 2026-11-06
 > 发布平台：Android
-> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口并重新构建 APK；待 Android 真机验收。
+> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；待 Android 真机验收。
 
 ## 1. 变更总览
 
 本次 fork 在原版 Echo Loop 的本地学习能力之上，完成三类改动：
 
 1. **新增 AI 口语自由练习**：用户的英语口语可以从麦克风实时转写，交给可配置的大模型生成英语回复，再用 TTS 朗读；支持 BYOK 供应商、模型、温度与语音参数配置。
-2. **改造为端侧优先运行（Android）**：移除账号登录、订阅权益、社区合集、精选播客与自建后端 AI/转录/聊天链路；AI 能力统一改为客户端 BYOK 直连，学习数据与凭据只留在本机。百度网盘导入入口按用户要求保留，其 OAuth 仍由原项目后端桥接，是端侧主流程之外唯一的后端依赖。
+2. **改造为端侧优先运行（Android）**：移除账号登录、订阅权益、社区合集、精选播客与自建后端 AI/转录/聊天链路；AI 能力统一改为客户端 BYOK 直连，学习数据与凭据只留在本机。百度网盘导入入口按用户要求保留，OAuth 改为应用内简化模式，用户填写自建应用 AppKey，不再依赖自建后端。
 3. **移除应用内升级检查**：删除启动、前台恢复与设置页中的版本检查、更新弹窗和安装包跳转。
 
 本次改动没有修改本地数据库 schema；原有素材、收藏、单词/意群、学习记录仍按原结构读取。
@@ -24,8 +24,9 @@
 - 语音合成使用阿里云百炼 TTS：`qwen-audio-3.1-tts-plus`，默认音色 `longanlingxin_v3.1`。
 - 大模型至少支持 DeepSeek，同时支持阿里云百炼、OpenAI 与自定义 OpenAI 兼容接口。
 - 用户随后要求移除账号登录及相关登录限制，并清理应用内升级检查。
-- 用户最终确认将项目改造成 Android 端侧优先版本：AI 使用用户自备 API Key 直连供应商，保留本地学习、本地导入与本地备份；当时移除自建后台依赖，后于 2026-11-06 恢复百度网盘入口并保留其 OAuth 后端桥接。
-- 2026-11-06 用户复核发现原版“从网盘导入”入口在改造中丢失，要求恢复；恢复后该入口的 OAuth 仍需原项目后端，作为端侧主流程之外的例外保留。
+- 用户最终确认将项目改造成 Android 端侧优先版本：AI 使用用户自备 API Key 直连供应商，保留本地学习、本地导入与本地备份；当时移除自建后台依赖，后于 2026-11-06 恢复百度网盘入口。
+- 用户要求研究纯端侧能否实现百度网盘 OAuth；确认只有简化模式不需要 `client_secret`，并接受在应用内填写自己在百度开放平台创建的应用 AppKey，不复用上游应用、不内置任何密钥。
+- 2026-11-06 用户复核发现原版“从网盘导入”入口在改造中丢失，要求恢复；随后又要求移除该入口对原项目后端的 OAuth 依赖，改为纯端侧简化模式。
 
 ## 3. 新增能力
 
@@ -125,17 +126,28 @@ AI 与内容入口收敛：
 - `lib/features/podcast/screens/podcast_discovery_screen.dart` 删除精选播客列表、分页与刷新逻辑，保留搜索与 RSS 链接导入提示。
 - `lib/screens/library_screen.dart` 删除「发现社区合集」入口 Banner。
 - `lib/screens/collection_detail_screen.dart` 删除社区合集下拉刷新与同步逻辑，只展示本地已有内容。
-- `lib/widgets/import_audio_sheet.dart` 保留本地文件、音频直链与“从网盘导入”三个入口；网盘 OAuth 仍由原项目后端桥接，文件列表与下载由客户端直连百度 API。
+- `lib/widgets/import_audio_sheet.dart` 保留本地文件、音频直链与“从网盘导入”三个入口；网盘 OAuth 改为应用内简化模式，文件列表与下载由客户端直连百度 API。
 - `lib/widgets/manage_subtitles_sheet.dart` 默认本地转录，隐藏 AI 云端转录与免费试用入口。
 - `lib/screens/retell_player_screen.dart` 隐藏 AI 复述评估按钮。
 
 百度网盘导入入口恢复（2026-11-06）：
 
 - `lib/widgets/import_audio_sheet.dart` 的来源选择恢复为“本地文件 / 从网盘导入 / 音频直链”三项，`_ChooseSourcePanel` 新增 `onCloudDrive` 回调并接入 `_ImportStep.cloudDrive`；原有的网盘来源页、百度网盘目录页、导入任务管理与下载队列继续复用。
-- 百度网盘 OAuth 仍通过 `lib/features/baidu_netdisk/data/baidu_oauth_api.dart` 访问原项目后端的 `/api/v1/netdisk/baidu/oauth/*`；文件列表与下载由 `lib/features/baidu_netdisk/data/baidu_netdisk_api.dart` 直连 `https://pan.baidu.com/rest/2.0/xpan/*`。
-- 因此“从网盘导入”可用性依赖原项目后端；后端不可用时只能完成本地文件与音频直链导入。应用本身仍无账号登录、订阅与付费门禁。
+- 百度网盘 OAuth 随后改为应用内简化模式，用户填写自建应用 AppKey；文件列表与下载仍由 `lib/features/baidu_netdisk/data/baidu_netdisk_api.dart` 直连 `https://pan.baidu.com/rest/2.0/xpan/*`，不再经过原项目后端。详见 3.5。
+- 应用本身仍无账号登录、订阅与付费门禁。
 
-### 3.5 移除应用内升级检查
+### 3.5 百度网盘 OAuth 改为纯端侧简化模式（2026-11-06）
+
+- 背景：恢复“从网盘导入”后，OAuth 仍通过原项目后端桥接，是端侧主流程之外唯一的后端依赖；用户要求研究纯端侧可行性。
+- 结论：官方文档中只有简化模式（Implicit Grant）不需要 `client_secret`，可在端侧完成；授权码模式、设备码模式与 Android OAuth SDK 的换 token/刷新都强制要求 `client_secret`，把 SecretKey 打进 APK 不可接受，因此不采用。
+- 授权流程：用户在应用内填写自己在百度网盘开放平台创建的应用 AppKey → WebView 打开 `https://openapi.baidu.com/oauth/2.0/authorize?response_type=token&client_id=...&redirect_uri=oob&scope=basic,netdisk&display=popup&state=...` → 授权成功后跳转 `https://openapi.baidu.com/oauth/2.0/login_success#access_token=...` → WebView 拦截回调，校验 `state`、`access_token`、`expires_in` 与 `scope` 后保存凭据。
+- 新增 `lib/features/baidu_netdisk/data/baidu_implicit_oauth.dart`（授权 URL 构造、16 字节 base64Url `state`、回调解析与校验）、`screens/baidu_oauth_webview_screen.dart`（内嵌 WebView、回调拦截、关闭/重试）、`data/baidu_app_key_store.dart`（AppKey 本地存取）、`models/baidu_oauth_result.dart`（成功/失败/取消三态）。
+- `models/baidu_credential_bundle.dart` 允许空 `refreshToken` 并新增 `canRefresh`；`data/baidu_credential_repository.dart` 改为 token 过期即清除、不再刷新；`providers/baidu_netdisk_import_controller.dart` 的授权入口改为 `authorizeAndLoad(appKey, authorize)`；`lib/widgets/import_audio_sheet.dart` 授权态新增 AppKey 输入框与“连接网盘”按钮。
+- 删除 `data/baidu_oauth_api.dart`、`services/baidu_oauth_launcher.dart`、`models/baidu_oauth_session.dart`、`models/baidu_oauth_session_status.dart`、`models/baidu_netdisk_error.dart` 及对应测试，移除后端 OAuth 接口与浏览器/应用跳转授权实现。
+- 安全边界：AppKey 不是机密，存 SharedPreferences（`baidu_netdisk_app_key_v1`）；access token 存既有凭据存储；应用内不包含 SecretKey。
+- 限制：简化模式不返回 refresh token，access token 约 30 天过期，需要重新授权；百度个人应用默认限 10 个用户；2026-06-03 之后创建的应用，`download`、`filemanager`、`precreate`、`meta`、`move` 与 `multimedia.listall` 等接口仅能访问 `/apps/{appname}` 目录，可能影响浏览和下载任意目录文件；真机尚未验证百度登录、回调拦截与授权后目录浏览。
+
+### 3.6 移除应用内升级检查
 
 - 删除 `lib/models/app_update_info.dart`、`lib/providers/app_update_provider.dart`、`app_update_provider.g.dart`。
 - 删除 `lib/services/app_update_checker.dart`、`lib/services/app_update_launcher.dart`、`lib/services/android_update_bridge.dart`。
@@ -156,7 +168,7 @@ AI 与内容入口收敛：
 | 云端字幕转录 | 自建上传 / 提交转录任务 | 下线 AI 转录入口，保留本地离线转录 |
 | 社区合集 | 自建 `/api/v2/collections` | 删除发现入口与详情同步 |
 | 精选播客 | 自建 `/api/v1/featured-podcasts` | 删除精选列表，保留搜索与 RSS 导入 |
-| 百度网盘 | 自建 OAuth 与文件接口 | 恢复导入入口；账号入口仍隐藏，OAuth 依赖原后端，文件列表/下载客户端直连百度 API |
+| 百度网盘 | 自建 OAuth 与文件接口 | 恢复导入入口；应用内简化模式 OAuth（用户自填 AppKey），文件列表/下载客户端直连百度 API，不经过自建后端 |
 | 远程配置 / 埋点 / 地区探测 | 启动期依赖 Supabase / Firebase / RevenueCat 等 | 移除第三方启动链路，保留本地默认配置 |
 | 本地备份 | `.elbak` 导出/恢复 | 保留，不提供云同步 |
 | 应用内升级 | 启动/前台/设置页检查版本并弹窗 | 全部移除 |
@@ -169,6 +181,10 @@ AI 与内容入口收敛：
 - `docs/on-device-architecture-plan.md`：Android 纯端侧改造方案。
 - `docs/fork-dev-log.md`：本文档。
 - `lib/features/ai_speaking/`：AI 口语完整功能域（模型、凭据、Provider、服务、页面、组件）。
+- `lib/features/baidu_netdisk/data/baidu_implicit_oauth.dart`：百度 OAuth 简化模式授权 URL、state 与回调解析。
+- `lib/features/baidu_netdisk/data/baidu_app_key_store.dart`：用户自填 AppKey 的本地存取。
+- `lib/features/baidu_netdisk/models/baidu_oauth_result.dart`：授权成功/失败/取消三态。
+- `lib/features/baidu_netdisk/screens/baidu_oauth_webview_screen.dart`：应用内授权 WebView。
 - `lib/services/byok_ai_service.dart`：统一 BYOK AI 服务。
 - `test/features/ai_speaking/`：AI 口语模型、设置、会话控制器、页面与语音客户端测试。
 - `test/services/byok_ai_service_test.dart`：BYOK 模型列表、请求头与排序测试。
@@ -182,6 +198,7 @@ AI 与内容入口收敛：
 - 账号与权益：`lib/features/auth/sign_in_required_dialog.dart`、`lib/features/auth/supabase_startup_gate.dart`、`lib/features/subscription/providers/feature_access_provider.dart`、`lib/features/subscription/widgets/feature_gate.dart`。
 - 网络边界：`lib/services/backend_dio.dart`（更新接口用途注释，保留旧接口兼容）。
 - 本地化：`lib/l10n/app_en.arb`、`lib/l10n/app_zh.arb`、`lib/l10n/app_localizations.dart`、`app_localizations_en.dart`、`app_localizations_zh.dart`。
+- 百度网盘 OAuth：`lib/features/baidu_netdisk/data/baidu_credential_repository.dart`、`models/baidu_credential_bundle.dart`、`providers/baidu_netdisk_providers.dart`、`providers/baidu_netdisk_import_controller.dart`、`lib/widgets/import_audio_sheet.dart` 及本地化文件改为纯端侧简化模式。
 - 依赖与忽略：`pubspec.yaml` 新增 `record: ^6.2.1`；`pubspec.lock` 更新；`.gitignore` 新增 `/Releases/`。
 - 生成文件：`linux/flutter/generated_plugin_registrant.cc`、`linux/flutter/generated_plugin_registrant.h`、`linux/flutter/generated_plugins.cmake`、`macos/Flutter/GeneratedPluginRegistrant.swift`、`windows/flutter/generated_plugin_registrant.cc`、`windows/flutter/generated_plugin_registrant.h`、`windows/flutter/generated_plugins.cmake` 因新增 `record` 依赖注册插件；这些是合法的生成结果。
 - 项目文档：`PLAN.md`、`TASKS.md`、`README.md`、`README.en.md`、`docs/troubleshooting.md`。
@@ -190,6 +207,7 @@ AI 与内容入口收敛：
 
 - 登录/账号页面：`lib/features/auth/screens/account_screen.dart`、`check_email_screen.dart`、`email_sign_in_screen.dart`、`login_screen.dart`、`password_sign_in_screen.dart`。
 - 应用升级：`lib/models/app_update_info.dart`、`lib/providers/app_update_provider.dart`、`lib/providers/app_update_provider.g.dart`、`lib/services/app_update_checker.dart`、`lib/services/app_update_launcher.dart`、`lib/services/android_update_bridge.dart`、`lib/widgets/app_update_dialog.dart`。
+- 百度网盘后端 OAuth：`lib/features/baidu_netdisk/data/baidu_oauth_api.dart`、`lib/features/baidu_netdisk/services/baidu_oauth_launcher.dart`、`lib/features/baidu_netdisk/models/baidu_oauth_session.dart`、`lib/features/baidu_netdisk/models/baidu_oauth_session_status.dart`、`lib/features/baidu_netdisk/models/baidu_netdisk_error.dart`。
 - 旧测试（完整列表）：
   - `test/features/auth/auth_flow_screens_test.dart`、`auth_providers_test.dart`、`google_services_availability_test.dart`、`password_sign_in_screen_test.dart`、`sign_in_required_dialog_test.dart`
   - `test/features/chatbot/services/chat_api_client_test.dart`
@@ -200,6 +218,7 @@ AI 与内容入口收敛：
   - `test/screens/collection_detail_community_refresh_test.dart`
   - `test/services/app_update_checker_test.dart`、`app_update_launcher_test.dart`、`sentence_ai_api_client_test.dart`
   - `test/widgets/app_update_dialog_test.dart`、`sentence_explanation_view_auth_test.dart`
+  - `test/features/baidu_netdisk/data/baidu_oauth_api_test.dart`、`test/features/baidu_netdisk/models/baidu_oauth_models_test.dart`、`test/features/baidu_netdisk/services/baidu_oauth_launcher_test.dart`
 - 说明：删除的是自建后端/登录/付费/升级相关入口与用例，不删除本地学习、离线转录、播放器、词典、备份等主流程。
 
 ### 5.4 测试调整
@@ -209,6 +228,7 @@ AI 与内容入口收敛：
 - 修改 `test/helpers/mock_providers.dart`：清理登录、订阅、Supabase、应用升级等旧依赖。
 - 修改 `test/screens/settings_screen_test.dart`、`test/screens/study_screen_test.dart`、`test/screens/learning_plan_screen_test.dart`、`test/screens/retell_player_screen_test.dart`、`test/widgets/import_audio_sheet_test.dart`、`test/widgets/manage_subtitles_sheet_test.dart`、`test/widgets/audio_list_tile_test.dart`、`test/widgets/app_startup_gate_test.dart`，移除已下线入口与登录门禁断言。
 - 恢复 `test/widgets/import_audio_sheet_test.dart` 的网盘入口覆盖：断言“从网盘导入”可见、三个入口的纵向顺序，以及点击后进入网盘来源页。
+- 新增 `test/features/baidu_netdisk/data/baidu_implicit_oauth_test.dart`（授权 URL、state、回调解析与错误分支）与 `baidu_app_key_store_test.dart`（读写与空值）；修改 `baidu_credential_repository_test.dart`、`baidu_credential_bundle_test.dart`、`baidu_netdisk_import_controller_test.dart` 与 `test/widgets/import_audio_sheet_test.dart` 适配简化模式。
 - 修改 `test/features/chatbot/feature_access_ai_chat_test.dart`、`test/features/chatbot/providers/chat_session_controller_test.dart`、`test/features/chatbot/widgets/chat_view_test.dart`、`test/features/podcast/podcast_discovery_screen_test.dart`、`test/features/subscription/feature_access_provider_test.dart`、`test/features/user_region/user_region_override_test.dart`、`test/providers/sentence_ai_provider_test.dart`、`test/services/client_info_test.dart`、`test/services/dictionary/ai_dictionary_source_test.dart`，使测试与新 BYOK/纯端侧行为一致。
 
 ## 6. 文档更新
@@ -218,13 +238,15 @@ AI 与内容入口收敛：
 - `README.md` / `README.en.md`：平台徽章改为 Android；下载/试用、快速开始、开发命令、环境要求改为 Android + APK；FAQ 移除会员额度、百度网盘、云端 AI 描述；Roadmap 标记 AI 口语完成与纯端侧清理。
 - `docs/troubleshooting.md`：新增 7.42 ASR 协议、7.43 测试输入时序、7.44 纯端侧旧测试清理、7.45 Gradle/APK 构建、7.46 `retell_recording_controller_test` 顺序敏感记录。
 - `docs/ai-speaking-implementation-plan.md`：AI 口语实现级计划，记录决策、接口、状态机、文件清单与验收项。
-- `docs/on-device-architecture-plan.md`：纯端侧能力对照、架构决策、兼容性与验证计划。
+- `docs/on-device-architecture-plan.md`：纯端侧能力对照、架构决策、兼容性与验证计划；补充百度网盘 OAuth 简化模式、AppKey 存储与目录限制风险。
+- 2026-11-06 文档同步：`PLAN.md`、`TASKS.md`、`README.md`、`README.en.md`、`docs/fork-dev-log.md` 与 `docs/on-device-architecture-plan.md` 均改为“百度网盘 OAuth 走应用内简化模式、用户自填 AppKey、不再依赖自建后端”。
 
 ## 7. 数据、安全与兼容性
 
 - 不修改本地数据库 schema；原素材、字幕、收藏、单词/意群、学习记录可继续读取。
 - 旧 Supabase 会话、订阅状态不再读取，也不会主动删除用户设备上的旧数据。
 - API Key 只存 `flutter_secure_storage`，不写入 SharedPreferences、日志、错误上报或备份文件。
+- 百度网盘 AppKey 不是机密，存 SharedPreferences（`baidu_netdisk_app_key_v1`）；access token 存既有凭据存储；应用不内置 SecretKey，也不复用上游应用。
 - AI 口语对话只保存在内存，退出页面即丢弃。
 - 本地备份继续使用既有 `.elbak` 导出/恢复流程，不提供云同步。
 - `pubspec.yaml` 中仍保留 Supabase、Firebase、RevenueCat 等依赖；本 fork 已在运行时移除其初始化路径。后续若要彻底减小包体，可单独清理这些死依赖与兼容层。
@@ -234,6 +256,7 @@ AI 与内容入口收敛：
 
 - `flutter analyze lib test`：**0 error**；215 条为仓库既有 warning/info。
 - 2026-11-06 网盘入口修复：`dart format` 两个改动文件 0 changed；`flutter test test/widgets/import_audio_sheet_test.dart` 21 项全部通过；改动文件 `flutter analyze` 无问题；`git diff --check` 通过。
+- 2026-11-06 纯端侧 OAuth：`flutter test test/features/baidu_netdisk test/widgets/import_audio_sheet_test.dart` 为 **110 passed**（同时修复 `baidu_netdisk_import_service_test.dart` 两项既有 Windows 路径分隔符断言，改用 `p.join`）；控制器测试单独 11 项全部通过；`flutter analyze lib test` 为 **0 error / 10 warning / 197 info**，本改动仅 8 条 `prefer_initializing_formals` info。
 - 定向测试：**187 passed / 2 skipped**，覆盖 AI 口语、BYOK、设置页、学习页、句子详情、收藏复习与字幕相关流程。
 - 全量 `flutter test`：**5671 passed / 11 skipped / 25 failed**；25 项均为改造前既有、与本 fork 功能无关的套件失败：
   `ios_release_script`、`audio_import`、`baidu_netdisk`、`community_download`、`media_engine`、`transcription_task`、`favorites_prewarm`、`log_viewer`、`media_playback`、`app_logger`、`backup_service`、`orphan_file_cleanup`、`tts_cache_store`。
@@ -244,7 +267,7 @@ AI 与内容入口收敛：
 
 - 产物：`android/app/release/app-dev-release.apk`（由 `build/app/outputs/flutter-apk/app-dev-release.apk` 复制）
 - 大小：113,951,694 bytes
-- SHA-256：`ccd8656df6e64b19b7a15a81efe763bbeb722296e612b246e7bfaf1ef188369c`
+- SHA-256：`b135a1fe08b13b4fbe7a2d1d61ec538bb936e662c4223a115205dbe02665962e`（2026-11-06 纯端侧 OAuth 改造后重新构建；上一版为 `df9610f30b0956f6c4af7d8c4bdc1cae99b2ff6f99a6ee169d963f63011c759b`）
 - 包名：`app.echoloop.dev`
 - versionCode / versionName：`1` / `1.0`
 - minSdk / targetSdk：`24` / `36`
@@ -274,4 +297,4 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 5. 本地备份是唯一数据保全方式，换机前必须手动导出。
 6. 依赖包与部分旧接口代码尚未彻底清理；当前以「运行时不初始化、入口不可达」为边界。
 7. 全量测试仍有既有失败，详见第 8 节；这些失败不代表本 fork 新增功能回归。
-8. “从网盘导入”的 OAuth 依赖原项目后端 `https://www.echo-loop.top`（开发环境为 `http://localhost:3000`），不是端侧能力；后端不可用或接口变更时该入口无法完成授权。
+8. 百度网盘 OAuth 简化模式不支持刷新令牌，access token 约 30 天过期，用户需重新授权；用户需自行在百度网盘开放平台创建应用并填写 AppKey，个人应用默认限 10 个用户；2026-06-03 之后创建的应用受 `/apps/{appname}` 目录限制，可能无法浏览或下载该目录之外的文件。真机尚未验证百度登录、回调拦截与授权后目录浏览。

@@ -1,7 +1,7 @@
 /// 百度 OAuth credential bundle。
 ///
-/// App 端用一个 secure storage JSON key 保存完整 bundle，refresh 成功时整体替换，
-/// 避免 access token 与 refresh token 版本错配。
+/// App 端用一个 secure storage JSON key 保存完整 bundle。简化模式没有 refresh
+/// token，refreshToken 允许为空；后续如果接入授权码模式，仍可保存完整 bundle。
 library;
 
 import 'dart:convert';
@@ -19,7 +19,7 @@ class BaiduCredentialBundle {
   /// Access token。
   final String accessToken;
 
-  /// Refresh token。
+  /// Refresh token；简化模式授权时为空字符串。
   final String refreshToken;
 
   /// Access token 过期时间（UTC）。
@@ -27,6 +27,9 @@ class BaiduCredentialBundle {
 
   /// 百度返回的 scope 原文。
   final String scope;
+
+  /// 是否具备刷新能力；简化模式授权没有 refresh token。
+  bool get canRefresh => refreshToken.isNotEmpty;
 
   /// access token 在 [earlyExpiryWindow] 内过期时提前视为失效。
   bool isAccessTokenUsable(
@@ -56,7 +59,7 @@ class BaiduCredentialBundle {
     if (accessToken is! String || accessToken.isEmpty) {
       throw const FormatException('accessToken 非法');
     }
-    if (refreshToken is! String || refreshToken.isEmpty) {
+    if (refreshToken is! String) {
       throw const FormatException('refreshToken 非法');
     }
     if (scope is! String || scope.isEmpty) {

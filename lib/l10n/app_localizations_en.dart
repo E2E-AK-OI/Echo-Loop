@@ -4940,10 +4940,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get baiduNetdiskConnectDescription =>
-      'Authorize Echo Loop to browse your Baidu Netdisk and import selected media files.';
+      'Create an app on the Baidu Netdisk Open Platform, then enter its AppKey. The AppKey stays on this device; no SecretKey is needed.';
 
   @override
-  String get baiduNetdiskConnectAction => 'Connect Baidu Netdisk';
+  String get baiduNetdiskConnectAction => 'Authorize with AppKey';
+
+  @override
+  String get baiduNetdiskAppKeyLabel => 'Baidu app AppKey';
+
+  @override
+  String get baiduNetdiskAppKeyHint =>
+      'Paste the AppKey from Baidu Netdisk Open Platform';
+
+  @override
+  String get baiduNetdiskAppKeyHelp =>
+      'Create a Software app on the Baidu Netdisk Open Platform, then copy its AppKey from the app details.';
+
+  @override
+  String get baiduNetdiskAppKeyRequired => 'Enter your Baidu app AppKey first.';
+
+  @override
+  String get baiduNetdiskAppKeySaveFailed =>
+      'Failed to save the AppKey. Please try again.';
+
+  @override
+  String get baiduNetdiskAuthorizeNote =>
+      'Authorization happens inside the app. Implicit mode has no refresh token, so you will need to authorize again in about 30 days.';
+
+  @override
+  String get baiduNetdiskAuthorizeTitle => 'Baidu Netdisk Authorization';
+
+  @override
+  String get baiduNetdiskAuthorizeFailed =>
+      'Failed to load the authorization page. Check your network and try again.';
+
+  @override
+  String get baiduNetdiskRetry => 'Retry';
+
+  @override
+  String get baiduNetdiskClose => 'Close';
 
   @override
   String get baiduNetdiskLogoutTooltip => 'Sign out of Baidu Netdisk';

@@ -11,12 +11,12 @@ import 'package:flutter_riverpod/legacy.dart';
 import '../../../services/app_logger.dart';
 import '../../audio_import/subtitle_pairing.dart';
 import '../data/baidu_credential_repository.dart';
+import '../data/baidu_credential_store.dart';
+import '../data/baidu_implicit_oauth.dart';
 import '../data/baidu_netdisk_api.dart';
-import '../models/baidu_oauth_session.dart';
-import '../models/baidu_oauth_session_status.dart';
 import '../models/baidu_account_profile.dart';
+import '../models/baidu_oauth_result.dart';
 import '../models/cloud_drive_models.dart';
-import '../services/baidu_oauth_launcher.dart';
 import 'baidu_netdisk_providers.dart';
 
 /// 百度网盘浏览流程阶段。
@@ -156,7 +156,7 @@ final baiduNetdiskImportControllerProvider =
       return BaiduNetdiskImportController(
         credentialRepository: ref.watch(baiduCredentialRepositoryProvider),
         api: ref.watch(baiduNetdiskApiProvider),
-        launcher: ref.watch(baiduOAuthLauncherProvider),
+        oauth: ref.watch(baiduImplicitOAuthProvider),
       );
     });
 
@@ -167,18 +167,15 @@ class BaiduNetdiskImportController
   BaiduNetdiskImportController({
     required BaiduCredentialRepository credentialRepository,
     required BaiduNetdiskApi api,
-    required BaiduOAuthLauncher launcher,
-    TargetPlatform? platform,
+    BaiduImplicitOAuth? oauth,
   }) : _credentialRepository = credentialRepository,
        _api = api,
-       _launcher = launcher,
-       _platform = platform,
+       _oauth = oauth ?? BaiduImplicitOAuth(),
        super(const BaiduNetdiskImportState.idle());
 
   final BaiduCredentialRepository _credentialRepository;
   final BaiduNetdiskApi _api;
-  final BaiduOAuthLauncher _launcher;
-  final TargetPlatform? _platform;
+  final BaiduImplicitOAuth _oauth;
 
   /// 会话序号，用于丢弃已过期的授权与账户资料回调。
   int _sessionId = 0;
@@ -216,60 +213,60 @@ class BaiduNetdiskImportController
     await _loadDirectoryWithToken(path: path, accessToken: accessToken);
   }
 
-  /// 打开百度授权并轮询完成结果。
-  Future<void> authorizeAndLoad() async {
+  /// 使用用户填写的 AppKey 打开百度授权页，并在拿到凭证后加载目录。
+  ///
+  /// [authorize] 由 UI 提供，通常 push 应用内 WebView；Controller 不直接依赖
+  /// Flutter 页面，便于单测覆盖成功、失败和取消三种结果。
+  Future<void> authorizeAndLoad({
+    required String appKey,
+    required Future<BaiduOAuthResult> Function(
+      BaiduAuthorizationRequest request,
+    )
+    authorize,
+  }) async {
     if (state.isBusy) return;
     _sessionId++;
     final sid = _sessionId;
-    state = state.copyWith(
-      phase: BaiduNetdiskImportPhase.authorizing,
-      errorMessage: null,
-    );
+    // 授权页由 UI 在 authorize 回调中打开，此时本组件必须保持存活，
+    // 因此先维持授权态，拿到成功结果后再切换到授权中。
+    state = state.copyWith(errorMessage: null);
     try {
-      final session = await _credentialRepository.createSession(_platformName);
-      await _launcher.open(session.authorizationUri);
-      while (mounted && sid == _sessionId) {
-        await Future<void>.delayed(session.pollInterval);
-        if (!mounted || sid != _sessionId) return;
-        final status = await _credentialRepository.fetchStatus(session);
-        switch (status.phase) {
-          case BaiduOAuthSessionPhase.pending:
-          case BaiduOAuthSessionPhase.exchanging:
-            continue;
-          case BaiduOAuthSessionPhase.completed:
-            final credential = status.credential!;
-            await _credentialRepository.persistCompletedSession(
-              session: session,
-              credential: credential,
-            );
-            await _credentialRepository.consumeForceLoginOnce();
-            _loadAccountProfile(accessToken: credential.accessToken, sid: sid);
-            await _loadDirectoryWithToken(
-              path: state.currentPath,
-              accessToken: credential.accessToken,
-            );
-            return;
-          case BaiduOAuthSessionPhase.canceled:
-            await _credentialRepository.consumeForceLoginOnce();
-            state = state.copyWith(
-              phase: BaiduNetdiskImportPhase.authorizationRequired,
-              errorMessage:
-                  status.error?.message ?? 'Baidu authorization failed.',
-            );
-            return;
-          case BaiduOAuthSessionPhase.failed:
-            state = state.copyWith(
-              phase: BaiduNetdiskImportPhase.authorizationRequired,
-              errorMessage:
-                  status.error?.message ?? 'Baidu authorization failed.',
-            );
-            return;
-        }
+      final forceLogin = await _credentialRepository.readForceLoginOnce();
+      final request = _oauth.createAuthorizationRequest(
+        appKey: appKey,
+        forceLogin: forceLogin,
+      );
+      final result = await authorize(request);
+      if (!mounted || sid != _sessionId) return;
+      switch (result) {
+        case BaiduOAuthSuccess(:final credential):
+          state = state.copyWith(
+            phase: BaiduNetdiskImportPhase.authorizing,
+            errorMessage: null,
+          );
+          await _credentialRepository.saveCredential(credential);
+          await _credentialRepository.consumeForceLoginOnce();
+          if (!mounted || sid != _sessionId) return;
+          _loadAccountProfile(accessToken: credential.accessToken, sid: sid);
+          await _loadDirectoryWithToken(
+            path: state.currentPath,
+            accessToken: credential.accessToken,
+          );
+        case BaiduOAuthFailure(:final message):
+          state = state.copyWith(
+            phase: BaiduNetdiskImportPhase.authorizationRequired,
+            errorMessage: message,
+          );
+        case BaiduOAuthCancelled():
+          state = state.copyWith(
+            phase: BaiduNetdiskImportPhase.authorizationRequired,
+            errorMessage: null,
+          );
       }
     } catch (error) {
-      if (sid != _sessionId) return;
+      if (!mounted || sid != _sessionId) return;
       state = state.copyWith(
-        phase: BaiduNetdiskImportPhase.failed,
+        phase: BaiduNetdiskImportPhase.authorizationRequired,
         errorMessage: _messageForError(error),
       );
     }
@@ -399,19 +396,9 @@ class BaiduNetdiskImportController
     }
   }
 
-  BaiduNetdiskPlatform get _platformName {
-    final platform = _platform ?? defaultTargetPlatform;
-    return switch (platform) {
-      TargetPlatform.iOS => BaiduNetdiskPlatform.ios,
-      TargetPlatform.android => BaiduNetdiskPlatform.android,
-      TargetPlatform.macOS => BaiduNetdiskPlatform.macos,
-      TargetPlatform.windows => BaiduNetdiskPlatform.windows,
-      TargetPlatform.linux ||
-      TargetPlatform.fuchsia => BaiduNetdiskPlatform.linux,
-    };
-  }
-
   String _messageForError(Object error) {
+    if (error is BaiduOAuthException) return error.message;
+    if (error is BaiduCredentialStoreException) return error.message;
     if (error is BaiduReauthorizationRequiredException) {
       return 'Please connect Baidu Netdisk again.';
     }

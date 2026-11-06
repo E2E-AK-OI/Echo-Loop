@@ -8,8 +8,6 @@ import 'package:echo_loop/features/baidu_netdisk/data/baidu_credential_repositor
 import 'package:echo_loop/features/baidu_netdisk/data/baidu_netdisk_api.dart';
 import 'package:echo_loop/features/baidu_netdisk/data/baidu_netdisk_import_service.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/baidu_credential_bundle.dart';
-import 'package:echo_loop/features/baidu_netdisk/models/baidu_oauth_session.dart';
-import 'package:echo_loop/features/baidu_netdisk/models/baidu_oauth_session_status.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/baidu_account_profile.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/cloud_drive_models.dart';
 import 'package:echo_loop/models/audio_item.dart';
@@ -17,8 +15,6 @@ import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-
-import '../../../helpers/mock_providers.dart';
 
 class _FakeCredentialRepository implements BaiduCredentialRepository {
   _FakeCredentialRepository(this.accessToken);
@@ -39,23 +35,15 @@ class _FakeCredentialRepository implements BaiduCredentialRepository {
   }
 
   @override
-  Future<BaiduOAuthSession> createSession(BaiduNetdiskPlatform platform) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<BaiduOAuthSessionStatus> fetchStatus(BaiduOAuthSession session) {
-    throw UnimplementedError();
-  }
-
-  @override
   Future<String?> getValidAccessToken() async => accessToken;
 
   @override
-  Future<void> persistCompletedSession({
-    required BaiduOAuthSession session,
-    required BaiduCredentialBundle credential,
-  }) async {}
+  Future<bool> readForceLoginOnce() async => false;
+
+  @override
+  Future<void> saveCredential(BaiduCredentialBundle credential) async {
+    accessToken = credential.accessToken;
+  }
 }
 
 class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
@@ -293,8 +281,8 @@ void main() {
       expect(item.totalDuration, 12);
       expect(item.importSourceType, AudioImportSourceType.cloudDrive);
       expect(item.importSourceUrl, contains('baidunetdisk://fs/42'));
-      expect(item.audioPath, 'audios/imported/sha256.mp3');
-      expect(File('${tempDir.path}/${item.audioPath}').existsSync(), isTrue);
+      expect(item.audioPath, p.join('audios', 'imported', 'sha256.mp3'));
+      expect(File(p.join(tempDir.path, item.audioPath)).existsSync(), isTrue);
       expect(progresses, [3]);
     });
 
@@ -314,9 +302,9 @@ void main() {
       expect(api.fetchDownloadLinkCalls, 1);
       expect(api.downloadCalls, 1);
       expect(item.name, 'Lesson Video');
-      expect(item.audioPath, 'videos/sha256.mp4');
+      expect(item.audioPath, p.join('videos', 'sha256.mp4'));
       expect(item.isVideo, isTrue);
-      expect(File('${tempDir.path}/${item.audioPath}').existsSync(), isTrue);
+      expect(File(p.join(tempDir.path, item.audioPath)).existsSync(), isTrue);
     });
 
     test('dlink 下载失败时刷新一次链接后继续下载', () async {

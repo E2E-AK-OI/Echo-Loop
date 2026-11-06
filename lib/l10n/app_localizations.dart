@@ -8675,14 +8675,74 @@ abstract class AppLocalizations {
   /// No description provided for @baiduNetdiskConnectDescription.
   ///
   /// In en, this message translates to:
-  /// **'Authorize Echo Loop to browse your Baidu Netdisk and import selected media files.'**
+  /// **'Create an app on the Baidu Netdisk Open Platform, then enter its AppKey. The AppKey stays on this device; no SecretKey is needed.'**
   String get baiduNetdiskConnectDescription;
 
   /// No description provided for @baiduNetdiskConnectAction.
   ///
   /// In en, this message translates to:
-  /// **'Connect Baidu Netdisk'**
+  /// **'Authorize with AppKey'**
   String get baiduNetdiskConnectAction;
+
+  /// No description provided for @baiduNetdiskAppKeyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Baidu app AppKey'**
+  String get baiduNetdiskAppKeyLabel;
+
+  /// No description provided for @baiduNetdiskAppKeyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the AppKey from Baidu Netdisk Open Platform'**
+  String get baiduNetdiskAppKeyHint;
+
+  /// No description provided for @baiduNetdiskAppKeyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a Software app on the Baidu Netdisk Open Platform, then copy its AppKey from the app details.'**
+  String get baiduNetdiskAppKeyHelp;
+
+  /// No description provided for @baiduNetdiskAppKeyRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your Baidu app AppKey first.'**
+  String get baiduNetdiskAppKeyRequired;
+
+  /// No description provided for @baiduNetdiskAppKeySaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save the AppKey. Please try again.'**
+  String get baiduNetdiskAppKeySaveFailed;
+
+  /// No description provided for @baiduNetdiskAuthorizeNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Authorization happens inside the app. Implicit mode has no refresh token, so you will need to authorize again in about 30 days.'**
+  String get baiduNetdiskAuthorizeNote;
+
+  /// No description provided for @baiduNetdiskAuthorizeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Baidu Netdisk Authorization'**
+  String get baiduNetdiskAuthorizeTitle;
+
+  /// No description provided for @baiduNetdiskAuthorizeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load the authorization page. Check your network and try again.'**
+  String get baiduNetdiskAuthorizeFailed;
+
+  /// No description provided for @baiduNetdiskRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get baiduNetdiskRetry;
+
+  /// No description provided for @baiduNetdiskClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get baiduNetdiskClose;
 
   /// No description provided for @baiduNetdiskLogoutTooltip.
   ///

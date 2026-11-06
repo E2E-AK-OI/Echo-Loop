@@ -4700,10 +4700,40 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get baiduNetdiskConnectDescription =>
-      '授权 Echo Loop 浏览你的百度网盘，并导入选中的素材文件。';
+      '请先在百度网盘开放平台创建应用，再填写该应用的 AppKey。AppKey 只保存在本机，不需要填写 SecretKey。';
 
   @override
-  String get baiduNetdiskConnectAction => '连接百度网盘';
+  String get baiduNetdiskConnectAction => '使用 AppKey 授权';
+
+  @override
+  String get baiduNetdiskAppKeyLabel => '百度应用 AppKey';
+
+  @override
+  String get baiduNetdiskAppKeyHint => '粘贴百度网盘开放平台的应用 AppKey';
+
+  @override
+  String get baiduNetdiskAppKeyHelp => '在百度网盘开放平台创建「软件」类应用后，可在应用详情中查看 AppKey。';
+
+  @override
+  String get baiduNetdiskAppKeyRequired => '请先填写百度应用 AppKey。';
+
+  @override
+  String get baiduNetdiskAppKeySaveFailed => 'AppKey 保存失败，请重试。';
+
+  @override
+  String get baiduNetdiskAuthorizeNote => '授权在应用内完成。简化模式不返回刷新令牌，约 30 天后需要重新授权。';
+
+  @override
+  String get baiduNetdiskAuthorizeTitle => '百度网盘授权';
+
+  @override
+  String get baiduNetdiskAuthorizeFailed => '授权页加载失败，请检查网络后重试。';
+
+  @override
+  String get baiduNetdiskRetry => '重试';
+
+  @override
+  String get baiduNetdiskClose => '关闭';
 
   @override
   String get baiduNetdiskLogoutTooltip => '退出百度网盘登录';

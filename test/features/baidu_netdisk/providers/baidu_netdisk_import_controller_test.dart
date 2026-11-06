@@ -2,12 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:echo_loop/features/baidu_netdisk/data/baidu_credential_repository.dart';
 import 'package:echo_loop/features/baidu_netdisk/data/baidu_netdisk_api.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/baidu_credential_bundle.dart';
-import 'package:echo_loop/features/baidu_netdisk/models/baidu_oauth_session.dart';
-import 'package:echo_loop/features/baidu_netdisk/models/baidu_oauth_session_status.dart';
+import 'package:echo_loop/features/baidu_netdisk/models/baidu_oauth_result.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/baidu_account_profile.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/cloud_drive_models.dart';
 import 'package:echo_loop/features/baidu_netdisk/providers/baidu_netdisk_import_controller.dart';
-import 'package:echo_loop/features/baidu_netdisk/services/baidu_oauth_launcher.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeCredentialRepository implements BaiduCredentialRepository {
@@ -15,8 +13,9 @@ class _FakeCredentialRepository implements BaiduCredentialRepository {
 
   String? accessToken;
   bool cleared = false;
+  bool forceLogin = false;
   int consumedForceLoginCount = 0;
-  BaiduOAuthSessionStatus? authorizationStatus;
+  BaiduCredentialBundle? savedCredential;
 
   @override
   Future<void> clearCredential() async {
@@ -27,6 +26,7 @@ class _FakeCredentialRepository implements BaiduCredentialRepository {
   @override
   Future<void> consumeForceLoginOnce() async {
     consumedForceLoginCount++;
+    forceLogin = false;
   }
 
   @override
@@ -36,31 +36,16 @@ class _FakeCredentialRepository implements BaiduCredentialRepository {
   }
 
   @override
-  Future<BaiduOAuthSession> createSession(BaiduNetdiskPlatform platform) async {
-    return BaiduOAuthSession(
-      sessionId: 'sid',
-      pollToken: 'poll',
-      authorizationUri: Uri.parse('https://openapi.baidu.com/oauth'),
-      expiresAt: DateTime.utc(2026, 8, 18, 12, 10),
-      pollInterval: Duration.zero,
-    );
-  }
-
-  @override
-  Future<BaiduOAuthSessionStatus> fetchStatus(BaiduOAuthSession session) async {
-    final status = authorizationStatus;
-    if (status == null) throw StateError('未设置 OAuth 授权状态');
-    return status;
-  }
-
-  @override
   Future<String?> getValidAccessToken() async => accessToken;
 
   @override
-  Future<void> persistCompletedSession({
-    required BaiduOAuthSession session,
-    required BaiduCredentialBundle credential,
-  }) async {}
+  Future<bool> readForceLoginOnce() async => forceLogin;
+
+  @override
+  Future<void> saveCredential(BaiduCredentialBundle credential) async {
+    savedCredential = credential;
+    accessToken = credential.accessToken;
+  }
 }
 
 class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
@@ -123,11 +108,6 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
   }
 }
 
-class _NoopLauncher implements BaiduOAuthLauncher {
-  @override
-  Future<void> open(Uri authorizationUri) async {}
-}
-
 void main() {
   group('BaiduNetdiskImportController', () {
     late _FakeCredentialRepository credentialRepository;
@@ -183,7 +163,6 @@ void main() {
       controller = BaiduNetdiskImportController(
         credentialRepository: credentialRepository,
         api: api,
-        launcher: _NoopLauncher(),
       );
     });
 
@@ -202,34 +181,95 @@ void main() {
       );
     });
 
-    test('授权取消时消费一次性强制登录标志', () async {
+    test('授权成功保存凭证并加载目录', () async {
       credentialRepository.accessToken = null;
-      credentialRepository.authorizationStatus = const BaiduOAuthSessionStatus(
-        phase: BaiduOAuthSessionPhase.canceled,
+      api.entries = const [audio];
+
+      await controller.authorizeAndLoad(
+        appKey: 'test-app-key',
+        authorize: (request) async {
+          expect(request.uri.queryParameters['response_type'], 'token');
+          expect(request.uri.queryParameters['client_id'], 'test-app-key');
+          expect(request.uri.queryParameters['redirect_uri'], 'oob');
+          expect(request.forceLogin, isFalse);
+          // 授权页打开期间不能进入 authorizing，否则入口组件会被销毁。
+          expect(
+            controller.state.phase,
+            isNot(BaiduNetdiskImportPhase.authorizing),
+          );
+          return BaiduOAuthSuccess(
+            BaiduCredentialBundle(
+              accessToken: 'new-token',
+              refreshToken: '',
+              expiresAt: DateTime.utc(2027, 1, 1),
+              scope: 'basic netdisk',
+            ),
+          );
+        },
       );
 
-      await controller.authorizeAndLoad();
-
+      expect(credentialRepository.savedCredential?.accessToken, 'new-token');
       expect(credentialRepository.consumedForceLoginCount, 1);
+      expect(controller.state.phase, BaiduNetdiskImportPhase.ready);
+      expect(api.lastDir, '/');
+    });
+
+    test('授权取消时回到授权态且不消费强制登录标志', () async {
+      credentialRepository.accessToken = null;
+      credentialRepository.forceLogin = true;
+
+      await controller.authorizeAndLoad(
+        appKey: 'test-app-key',
+        authorize: (request) async {
+          expect(request.forceLogin, isTrue);
+          return const BaiduOAuthCancelled();
+        },
+      );
+
+      expect(credentialRepository.consumedForceLoginCount, 0);
+      expect(credentialRepository.forceLogin, isTrue);
       expect(
         controller.state.phase,
         BaiduNetdiskImportPhase.authorizationRequired,
       );
+      expect(controller.state.errorMessage, isNull);
     });
 
-    test('授权失败时保留一次性强制登录标志', () async {
+    test('授权失败时保留一次性强制登录标志并展示错误', () async {
       credentialRepository.accessToken = null;
-      credentialRepository.authorizationStatus = const BaiduOAuthSessionStatus(
-        phase: BaiduOAuthSessionPhase.failed,
-      );
+      credentialRepository.forceLogin = true;
 
-      await controller.authorizeAndLoad();
+      await controller.authorizeAndLoad(
+        appKey: 'test-app-key',
+        authorize: (_) async => const BaiduOAuthFailure('用户拒绝授权'),
+      );
 
       expect(credentialRepository.consumedForceLoginCount, 0);
       expect(
         controller.state.phase,
         BaiduNetdiskImportPhase.authorizationRequired,
       );
+      expect(controller.state.errorMessage, '用户拒绝授权');
+    });
+
+    test('AppKey 为空时不打开授权页', () async {
+      credentialRepository.accessToken = null;
+      var opened = false;
+
+      await controller.authorizeAndLoad(
+        appKey: '   ',
+        authorize: (_) async {
+          opened = true;
+          return const BaiduOAuthCancelled();
+        },
+      );
+
+      expect(opened, isFalse);
+      expect(
+        controller.state.phase,
+        BaiduNetdiskImportPhase.authorizationRequired,
+      );
+      expect(controller.state.errorMessage, contains('AppKey'));
     });
 
     test('加载目录时保留目录、音频和非音频文件', () async {
