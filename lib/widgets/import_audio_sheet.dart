@@ -250,6 +250,7 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
         _ImportStep.chooseSource => _ChooseSourcePanel(
           key: const ValueKey('choose-source'),
           onLocalFile: () => setState(() => _step = _ImportStep.localFile),
+          onCloudDrive: () => setState(() => _step = _ImportStep.cloudDrive),
           onDirectUrl: () => setState(() => _step = _ImportStep.directUrl),
         ),
         _ImportStep.localFile => AddAudioDialog(
@@ -663,10 +664,12 @@ class _ChooseSourcePanel extends StatelessWidget {
   const _ChooseSourcePanel({
     super.key,
     required this.onLocalFile,
+    required this.onCloudDrive,
     required this.onDirectUrl,
   });
 
   final VoidCallback onLocalFile;
+  final VoidCallback onCloudDrive;
   final VoidCallback onDirectUrl;
 
   @override
@@ -681,6 +684,13 @@ class _ChooseSourcePanel extends StatelessWidget {
           icon: Icons.audio_file_outlined,
           title: l10n.importAudioFromFile,
           onTap: onLocalFile,
+        ),
+        const SizedBox(height: 8),
+        _ImportOptionTile(
+          key: const ValueKey('import-option-cloud-drive'),
+          icon: Icons.cloud_outlined,
+          title: l10n.importAudioFromCloudDrive,
+          onTap: onCloudDrive,
         ),
         const SizedBox(height: 8),
         _ImportOptionTile(

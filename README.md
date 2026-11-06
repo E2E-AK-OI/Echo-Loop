@@ -210,14 +210,14 @@ AI 翻译、句子解析、意群拆分、词汇解析、AI 学习助手与 AI �
 <details>
 <summary><strong>开源项目为什么还要自己付 AI 费用？</strong></summary>
 
-代码完全开源（AGPL-3.0）。应用不设自建后台，也没有会员加价：AI 请求由你的设备直接发往你选择的模型供应商，费用由供应商按你的实际用量结算。
+代码完全开源（AGPL-3.0）。除百度网盘授权桥接外，应用不设自建后台，也没有会员加价：AI 请求由你的设备直接发往你选择的模型供应商，费用由供应商按你的实际用量结算。
 
 </details>
 
 <details>
 <summary><strong>支持哪些平台？</strong></summary>
 
-当前维护的纯端侧版本仅发布 **Android APK**，可从 [Releases](https://github.com/echo-loop/Echo-Loop/releases) 下载安装。上游原版的 App Store / Google Play 渠道不包含本分支的纯端侧改造。
+当前维护的端侧优先版本仅发布 **Android APK**，可从 [Releases](https://github.com/echo-loop/Echo-Loop/releases) 下载安装。上游原版的 App Store / Google Play 渠道不包含本分支的端侧改造。
 
 </details>
 
@@ -355,7 +355,8 @@ dart run build_runner build
 flutter run -d android
 ```
 
-> 本分支已改为纯端侧：不需要 Supabase / Google / Paddle 等编译期配置，也不需要 `.dev.env`。
+> 本分支已改为端侧优先：不需要 Supabase / Google / Paddle 等编译期配置，也不需要 `.dev.env`。
+> 百度网盘导入的 OAuth 仍由原项目后端桥接；其余 AI、转录与聊天请求不经过自建服务器。
 > 离线模型等资源 CDN 地址仍配置在 `lib/config/regional_service_endpoints.dart`，可按需修改。
 
 </details>

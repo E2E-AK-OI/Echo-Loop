@@ -5,14 +5,14 @@
 > 基线提交：`5df50638`（FIX: 百度网盘导入改为入队时整批获取 dlink，切后台后可接力下载）
 > 变更时间：2026-11-05 至 2026-11-06
 > 发布平台：Android
-> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；APK 已构建并校验；待 Android 真机验收。
+> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口并重新构建 APK；待 Android 真机验收。
 
 ## 1. 变更总览
 
 本次 fork 在原版 Echo Loop 的本地学习能力之上，完成三类改动：
 
 1. **新增 AI 口语自由练习**：用户的英语口语可以从麦克风实时转写，交给可配置的大模型生成英语回复，再用 TTS 朗读；支持 BYOK 供应商、模型、温度与语音参数配置。
-2. **改造为纯端侧运行（Android）**：移除账号登录、订阅权益、社区合集、精选播客、百度网盘与自建后端 AI/转录/聊天链路；AI 能力统一改为客户端 BYOK 直连，学习数据与凭据只留在本机。
+2. **改造为端侧优先运行（Android）**：移除账号登录、订阅权益、社区合集、精选播客与自建后端 AI/转录/聊天链路；AI 能力统一改为客户端 BYOK 直连，学习数据与凭据只留在本机。百度网盘导入入口按用户要求保留，其 OAuth 仍由原项目后端桥接，是端侧主流程之外唯一的后端依赖。
 3. **移除应用内升级检查**：删除启动、前台恢复与设置页中的版本检查、更新弹窗和安装包跳转。
 
 本次改动没有修改本地数据库 schema；原有素材、收藏、单词/意群、学习记录仍按原结构读取。
@@ -24,7 +24,8 @@
 - 语音合成使用阿里云百炼 TTS：`qwen-audio-3.1-tts-plus`，默认音色 `longanlingxin_v3.1`。
 - 大模型至少支持 DeepSeek，同时支持阿里云百炼、OpenAI 与自定义 OpenAI 兼容接口。
 - 用户随后要求移除账号登录及相关登录限制，并清理应用内升级检查。
-- 用户最终确认将项目改造成 Android 纯端侧版本：不依赖本项目自建后台，AI 使用用户自备 API Key 直连供应商，保留本地学习、本地导入与本地备份。
+- 用户最终确认将项目改造成 Android 端侧优先版本：AI 使用用户自备 API Key 直连供应商，保留本地学习、本地导入与本地备份；当时移除自建后台依赖，后于 2026-11-06 恢复百度网盘入口并保留其 OAuth 后端桥接。
+- 2026-11-06 用户复核发现原版“从网盘导入”入口在改造中丢失，要求恢复；恢复后该入口的 OAuth 仍需原项目后端，作为端侧主流程之外的例外保留。
 
 ## 3. 新增能力
 
@@ -96,7 +97,7 @@
 - `lib/providers/retell_review_evaluation_provider.dart`：删除登录与订阅门禁；复述 AI 评估入口暂时隐藏。
 - `lib/widgets/practice/sentence_explanation_view.dart`：AI 讲解自动加载不再依赖 Supabase access token；自动加载只由用户的 AI 显示设置控制。
 
-### 3.4 纯端侧架构
+### 3.4 端侧优先架构
 
 账号与权益：
 
@@ -124,9 +125,15 @@ AI 与内容入口收敛：
 - `lib/features/podcast/screens/podcast_discovery_screen.dart` 删除精选播客列表、分页与刷新逻辑，保留搜索与 RSS 链接导入提示。
 - `lib/screens/library_screen.dart` 删除「发现社区合集」入口 Banner。
 - `lib/screens/collection_detail_screen.dart` 删除社区合集下拉刷新与同步逻辑，只展示本地已有内容。
-- `lib/widgets/import_audio_sheet.dart` 只保留本地文件与音频直链导入，隐藏百度网盘入口。
+- `lib/widgets/import_audio_sheet.dart` 保留本地文件、音频直链与“从网盘导入”三个入口；网盘 OAuth 仍由原项目后端桥接，文件列表与下载由客户端直连百度 API。
 - `lib/widgets/manage_subtitles_sheet.dart` 默认本地转录，隐藏 AI 云端转录与免费试用入口。
 - `lib/screens/retell_player_screen.dart` 隐藏 AI 复述评估按钮。
+
+百度网盘导入入口恢复（2026-11-06）：
+
+- `lib/widgets/import_audio_sheet.dart` 的来源选择恢复为“本地文件 / 从网盘导入 / 音频直链”三项，`_ChooseSourcePanel` 新增 `onCloudDrive` 回调并接入 `_ImportStep.cloudDrive`；原有的网盘来源页、百度网盘目录页、导入任务管理与下载队列继续复用。
+- 百度网盘 OAuth 仍通过 `lib/features/baidu_netdisk/data/baidu_oauth_api.dart` 访问原项目后端的 `/api/v1/netdisk/baidu/oauth/*`；文件列表与下载由 `lib/features/baidu_netdisk/data/baidu_netdisk_api.dart` 直连 `https://pan.baidu.com/rest/2.0/xpan/*`。
+- 因此“从网盘导入”可用性依赖原项目后端；后端不可用时只能完成本地文件与音频直链导入。应用本身仍无账号登录、订阅与付费门禁。
 
 ### 3.5 移除应用内升级检查
 
@@ -149,7 +156,7 @@ AI 与内容入口收敛：
 | 云端字幕转录 | 自建上传 / 提交转录任务 | 下线 AI 转录入口，保留本地离线转录 |
 | 社区合集 | 自建 `/api/v2/collections` | 删除发现入口与详情同步 |
 | 精选播客 | 自建 `/api/v1/featured-podcasts` | 删除精选列表，保留搜索与 RSS 导入 |
-| 百度网盘 | 自建 OAuth 与文件接口 | 删除导入与账号入口 |
+| 百度网盘 | 自建 OAuth 与文件接口 | 恢复导入入口；账号入口仍隐藏，OAuth 依赖原后端，文件列表/下载客户端直连百度 API |
 | 远程配置 / 埋点 / 地区探测 | 启动期依赖 Supabase / Firebase / RevenueCat 等 | 移除第三方启动链路，保留本地默认配置 |
 | 本地备份 | `.elbak` 导出/恢复 | 保留，不提供云同步 |
 | 应用内升级 | 启动/前台/设置页检查版本并弹窗 | 全部移除 |
@@ -201,6 +208,7 @@ AI 与内容入口收敛：
 - 新增 `test/services/byok_ai_service_test.dart`：覆盖 `/models` 请求、Bearer 头与模型排序。
 - 修改 `test/helpers/mock_providers.dart`：清理登录、订阅、Supabase、应用升级等旧依赖。
 - 修改 `test/screens/settings_screen_test.dart`、`test/screens/study_screen_test.dart`、`test/screens/learning_plan_screen_test.dart`、`test/screens/retell_player_screen_test.dart`、`test/widgets/import_audio_sheet_test.dart`、`test/widgets/manage_subtitles_sheet_test.dart`、`test/widgets/audio_list_tile_test.dart`、`test/widgets/app_startup_gate_test.dart`，移除已下线入口与登录门禁断言。
+- 恢复 `test/widgets/import_audio_sheet_test.dart` 的网盘入口覆盖：断言“从网盘导入”可见、三个入口的纵向顺序，以及点击后进入网盘来源页。
 - 修改 `test/features/chatbot/feature_access_ai_chat_test.dart`、`test/features/chatbot/providers/chat_session_controller_test.dart`、`test/features/chatbot/widgets/chat_view_test.dart`、`test/features/podcast/podcast_discovery_screen_test.dart`、`test/features/subscription/feature_access_provider_test.dart`、`test/features/user_region/user_region_override_test.dart`、`test/providers/sentence_ai_provider_test.dart`、`test/services/client_info_test.dart`、`test/services/dictionary/ai_dictionary_source_test.dart`，使测试与新 BYOK/纯端侧行为一致。
 
 ## 6. 文档更新
@@ -225,6 +233,7 @@ AI 与内容入口收敛：
 ## 8. 验证结果
 
 - `flutter analyze lib test`：**0 error**；215 条为仓库既有 warning/info。
+- 2026-11-06 网盘入口修复：`dart format` 两个改动文件 0 changed；`flutter test test/widgets/import_audio_sheet_test.dart` 21 项全部通过；改动文件 `flutter analyze` 无问题；`git diff --check` 通过。
 - 定向测试：**187 passed / 2 skipped**，覆盖 AI 口语、BYOK、设置页、学习页、句子详情、收藏复习与字幕相关流程。
 - 全量 `flutter test`：**5671 passed / 11 skipped / 25 failed**；25 项均为改造前既有、与本 fork 功能无关的套件失败：
   `ios_release_script`、`audio_import`、`baidu_netdisk`、`community_download`、`media_engine`、`transcription_task`、`favorites_prewarm`、`log_viewer`、`media_playback`、`app_logger`、`backup_service`、`orphan_file_cleanup`、`tts_cache_store`。
@@ -233,9 +242,9 @@ AI 与内容入口收敛：
 
 ## 9. Android APK
 
-- 产物：`android/app/release/app-dev-release.apk`
+- 产物：`android/app/release/app-dev-release.apk`（由 `build/app/outputs/flutter-apk/app-dev-release.apk` 复制）
 - 大小：113,951,694 bytes
-- SHA-256：`37f35ef333c7d8b290b94b5fd0b8021c516bcac71b008a318b1b97e54abd553f`
+- SHA-256：`ccd8656df6e64b19b7a15a81efe763bbeb722296e612b246e7bfaf1ef188369c`
 - 包名：`app.echoloop.dev`
 - versionCode / versionName：`1` / `1.0`
 - minSdk / targetSdk：`24` / `36`
@@ -252,6 +261,7 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
   --max-workers=2 --no-daemon
 ```
 
+- 本机构建补充：`:integration_test` 依赖动态版本 `androidx.test:runner:1.2+`，当前网络无法读取 Maven 动态版本元数据；本次用临时 Gradle init script 将版本固定为本地缓存已有的 `1.3.0` 后构建成功。该脚本仅用于本机构建，未提交到仓库；正常网络环境可直接使用上述命令。
 - 当前缺少 `android/key.properties`，因此只能构建 `dev` flavor 并使用 Android Debug 签名；正式发布需补充 release keystore 后构建 `prod`。
 - `/Releases/` 与 `android/app/release/` 已被忽略，不进入 Git 提交。
 
@@ -264,3 +274,4 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 5. 本地备份是唯一数据保全方式，换机前必须手动导出。
 6. 依赖包与部分旧接口代码尚未彻底清理；当前以「运行时不初始化、入口不可达」为边界。
 7. 全量测试仍有既有失败，详见第 8 节；这些失败不代表本 fork 新增功能回归。
+8. “从网盘导入”的 OAuth 依赖原项目后端 `https://www.echo-loop.top`（开发环境为 `http://localhost:3000`），不是端侧能力；后端不可用或接口变更时该入口无法完成授权。

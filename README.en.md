@@ -187,14 +187,14 @@ Yes. Intensive listening, shadowing, blind listening, retelling, saved-sentence 
 <details>
 <summary><strong>Why do I pay for AI usage in an open-source project?</strong></summary>
 
-The code is fully open source (AGPL-3.0). The app has no self-hosted backend and no membership markup: AI requests go directly from your device to the provider you choose, and the provider bills you for your actual usage.
+The code is fully open source (AGPL-3.0). Apart from the Baidu Netdisk OAuth bridge, the app has no self-hosted backend and no membership markup: AI requests go directly from your device to the provider you choose, and the provider bills you for your actual usage.
 
 </details>
 
 <details>
 <summary><strong>Which platforms are supported?</strong></summary>
 
-This fork's on-device build is **Android only**. Download the APK from [Releases](https://github.com/echo-loop/Echo-Loop/releases). The upstream App Store and Google Play builds do not include this fork's on-device changes.
+This fork's on-device-first build is **Android only**. Download the APK from [Releases](https://github.com/echo-loop/Echo-Loop/releases). The upstream App Store and Google Play builds do not include this fork's on-device changes.
 
 </details>
 
@@ -331,9 +331,10 @@ dart run build_runner build
 flutter run -d android
 ```
 
-> This branch is on-device only: no Supabase / Google / Paddle compile-time settings and no
-> `.dev.env` are required. Offline model CDN addresses are still configured in
-> `lib/config/regional_service_endpoints.dart` and can be edited as needed.
+> This branch is on-device-first: no Supabase / Google / Paddle compile-time settings and no
+> `.dev.env` are required. Baidu Netdisk OAuth is still bridged through the upstream backend;
+> all other AI, transcription, and chat requests avoid a self-hosted server. Offline model CDN
+> addresses are still configured in `lib/config/regional_service_endpoints.dart` and can be edited as needed.
 
 </details>
 

@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:echo_loop/features/remote_config/remote_config.dart';
-import 'package:echo_loop/features/remote_config/remote_config_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -105,7 +103,6 @@ class _RecordingFilePicker extends FilePicker {
 Widget _buildApp({
   bool failImport = false,
   Locale locale = const Locale('en'),
-  bool cloudDriveImportEnabled = false,
   List<Override> overrides = const <Override>[],
 }) {
   return createTestApp(
@@ -135,18 +132,6 @@ Widget _buildApp({
       collectionListProvider.overrideWith(() => TestCollectionList()),
       audioImportControllerProvider.overrideWith(
         () => _ImmediateAudioImportController(fail: failImport),
-      ),
-      initialRemoteConfigProvider.overrideWithValue(
-        RemoteConfig(
-          version: RemoteConfig.currentVersion,
-          ttlSeconds: RemoteConfig.defaultTtlSeconds,
-          context: const RemoteConfigContext(),
-          features: RemoteConfigFeatures(
-            cloudDriveImport: RemoteFeatureConfig(
-              enabled: cloudDriveImportEnabled,
-            ),
-          ),
-        ),
       ),
       ...overrides,
     ]),
@@ -348,24 +333,43 @@ void main() {
     expect(removedIds, ['local-audio']);
   });
 
-  testWidgets('导入方式 sheet 提供本地文件与链接入口', (tester) async {
+  testWidgets('导入方式 sheet 提供本地文件、网盘与链接入口', (tester) async {
     await tester.pumpWidget(_buildApp());
     await tester.tap(find.text('Open Import'));
     await tester.pumpAndSettle();
 
     expect(find.text('Import Audio'), findsOneWidget);
     expect(find.text('Import from File'), findsOneWidget);
+    expect(find.text('Import from Cloud Storage'), findsOneWidget);
     expect(find.text('Import from Link'), findsOneWidget);
-    expect(find.text('Import from Cloud Storage'), findsNothing);
     expect(find.text('Baidu Netdisk'), findsNothing);
 
     final localTop = tester
         .getTopLeft(find.byKey(const ValueKey('import-option-local-file')))
         .dy;
+    final cloudDriveTop = tester
+        .getTopLeft(find.byKey(const ValueKey('import-option-cloud-drive')))
+        .dy;
     final linkTop = tester
         .getTopLeft(find.byKey(const ValueKey('import-option-direct-url')))
         .dy;
-    expect(localTop, lessThan(linkTop));
+    expect(localTop, lessThan(cloudDriveTop));
+    expect(cloudDriveTop, lessThan(linkTop));
+  });
+
+  testWidgets('网盘入口可进入网盘来源页', (tester) async {
+    await tester.pumpWidget(_buildApp());
+    await tester.tap(find.text('Open Import'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('import-option-cloud-drive')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('cloud-drive-source')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('cloud-drive-option-baidu-netdisk')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('导入方式入口使用独立边框分隔', (tester) async {
@@ -374,22 +378,35 @@ void main() {
     await tester.pumpAndSettle();
 
     final localOption = find.byKey(const ValueKey('import-option-local-file'));
+    final cloudDriveOption = find.byKey(
+      const ValueKey('import-option-cloud-drive'),
+    );
     final linkOption = find.byKey(const ValueKey('import-option-direct-url'));
     expect(localOption, findsOneWidget);
+    expect(cloudDriveOption, findsOneWidget);
     expect(linkOption, findsOneWidget);
 
     final localMaterial = tester.widget<Material>(
       find.descendant(of: localOption, matching: find.byType(Material)),
     );
+    final cloudDriveMaterial = tester.widget<Material>(
+      find.descendant(of: cloudDriveOption, matching: find.byType(Material)),
+    );
     final linkMaterial = tester.widget<Material>(
       find.descendant(of: linkOption, matching: find.byType(Material)),
     );
     final localShape = localMaterial.shape;
+    final cloudDriveShape = cloudDriveMaterial.shape;
     final linkShape = linkMaterial.shape;
     expect(localShape, isA<RoundedRectangleBorder>());
+    expect(cloudDriveShape, isA<RoundedRectangleBorder>());
     expect(linkShape, isA<RoundedRectangleBorder>());
     expect(
       (localShape! as RoundedRectangleBorder).side.style,
+      BorderStyle.solid,
+    );
+    expect(
+      (cloudDriveShape! as RoundedRectangleBorder).side.style,
       BorderStyle.solid,
     );
     expect(
@@ -398,8 +415,11 @@ void main() {
     );
 
     final localBottom = tester.getBottomLeft(localOption).dy;
+    final cloudDriveTop = tester.getTopLeft(cloudDriveOption).dy;
+    final cloudDriveBottom = tester.getBottomLeft(cloudDriveOption).dy;
     final linkTop = tester.getTopLeft(linkOption).dy;
-    expect(linkTop - localBottom, 8);
+    expect(cloudDriveTop - localBottom, 8);
+    expect(linkTop - cloudDriveBottom, 8);
   });
 
   testWidgets('本地文件入口允许一次选择多个音频和字幕文件', (tester) async {
