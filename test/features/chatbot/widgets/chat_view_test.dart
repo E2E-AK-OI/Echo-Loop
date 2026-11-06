@@ -5,7 +5,6 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:echo_loop/analytics/analytics_providers.dart';
-import 'package:echo_loop/features/auth/providers/auth_providers.dart';
 import 'package:echo_loop/features/chatbot/models/chat_message.dart';
 import 'package:echo_loop/features/chatbot/models/chatbot_config.dart';
 import 'package:echo_loop/features/chatbot/providers/chat_api_client_provider.dart';
@@ -15,16 +14,12 @@ import 'package:echo_loop/features/chatbot/services/ndjson_text_stream.dart';
 import 'package:echo_loop/features/chatbot/widgets/chat_composer.dart';
 import 'package:echo_loop/features/chatbot/widgets/chat_view.dart';
 import 'package:echo_loop/features/chatbot/widgets/message_list.dart';
-import 'package:echo_loop/features/subscription/models/premium_feature.dart';
-import 'package:echo_loop/features/subscription/providers/ai_trial_usage_provider.dart';
-import 'package:echo_loop/features/subscription/services/free_allowance_policy.dart';
 import 'package:echo_loop/providers/settings_provider.dart';
 import 'package:echo_loop/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/misc.dart';
 
 import '../../../helpers/mock_providers.dart';
@@ -65,51 +60,17 @@ class _CancelAwareApi implements ChatApi {
   void dispose() {}
 }
 
-class _Trial extends AiTrialUsageNotifier {
-  @override
-  Map<PremiumFeature, int> build() => const {};
-  @override
-  void consume(PremiumFeature feature) {}
-}
-
-Session _session() => Session(
-  accessToken: 't',
-  tokenType: 'bearer',
-  user: const User(
-    id: 'u',
-    appMetadata: {},
-    userMetadata: {},
-    aud: 'authenticated',
-    createdAt: '2026-07-13T00:00:00.000Z',
-  ),
-);
-
 void main() {
-  List<Override> overrides(
-    ChatApi api, {
-    FreeAllowancePolicy policy = const AlwaysAllowPolicy(),
-  }) => [
+  List<Override> overrides(ChatApi api) => [
     // controller 完成/中断一轮会记录埋点，避免依赖 app 启动期全局初始化。
     analyticsServiceProvider.overrideWithValue(
       createTestAnalyticsServiceSync(),
     ),
     chatApiClientProvider.overrideWithValue(api),
-    isAuthenticatedProvider.overrideWithValue(true),
-    supabaseSessionProvider.overrideWithValue(AsyncData<Session?>(_session())),
-    freeAllowancePolicyProvider.overrideWithValue(policy),
-    aiTrialUsageProvider.overrideWith(() => _Trial()),
     appSettingsProvider.overrideWith(() => TestAppSettings()),
   ];
 
-  // supabaseSessionProvider 是 StreamProvider（异步 emit）。controller 同步读
-  // valueOrNull，需先 subscribe 并 pump 让其落定，否则误判 authRequired。包一层
-  // Consumer 订阅 session。
-  Widget wrap(ChatView view) => Consumer(
-    builder: (context, ref, _) {
-      ref.watch(supabaseSessionProvider);
-      return view;
-    },
-  );
+  Widget wrap(ChatView view) => view;
 
   ChatbotConfig config({String? greeting, String? summary}) => ChatbotConfig(
     sessionId: 's1',
@@ -242,7 +203,6 @@ void main() {
     Widget capture(ChatView view) => Consumer(
       builder: (context, ref, _) {
         capturedRef = ref;
-        ref.watch(supabaseSessionProvider);
         return view;
       },
     );
@@ -402,31 +362,4 @@ void main() {
     expect(find.textContaining('正在回答'), findsWidgets); // 已生成部分保留
     expect(find.byIcon(Icons.arrow_upward), findsOneWidget); // 回到发送态
   });
-
-  testWidgets('已登录未解锁 → 发送触发 quotaExceeded 升级 banner', (tester) async {
-    await pumpChatWidget(
-      tester,
-      wrap(ChatView(config: config())),
-      overrides: overrides(
-        _ScriptApi(() => const Stream.empty()),
-        policy: _DenyPolicy(),
-      ),
-    );
-    await tester.pump();
-
-    await tester.enterText(find.byType(TextField), 'hi');
-    await tester.pump();
-    await tester.tap(find.byIcon(Icons.arrow_upward));
-    await tester.pump();
-    await tester.pump();
-
-    // gate banner 升级入口出现
-    expect(find.text('Upgrade'), findsOneWidget);
-    expect(find.byType(ChatComposer), findsOneWidget);
-  });
-}
-
-class _DenyPolicy implements FreeAllowancePolicy {
-  @override
-  bool allows(PremiumFeature feature) => false;
 }

@@ -5,39 +5,27 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../analytics/analytics_providers.dart';
 import '../analytics/analytics_service.dart';
 import '../analytics/permission_snapshot.dart';
-import '../config/auth_config.dart' as auth_config;
-import '../config/paddle_config.dart' as paddle_config;
-import '../config/revenuecat_config.dart' as revenuecat_config;
 import '../database/app_database.dart';
 import '../database/providers.dart';
 import '../features/onboarding_survey/providers/onboarding_survey_provider.dart'
     show sharedPreferencesProvider;
-import '../features/user_region/user_region_providers.dart';
 import '../features/community_collections/download/community_download_notifier.dart';
-import '../firebase_options.dart';
 import '../services/app_logger.dart';
 import '../services/asr/asr_model_manager.dart';
 import '../services/background_audio_handler.dart';
 import '../services/bundled_example_installer.dart';
-import '../services/network_permission_trigger.dart';
 import '../services/speech_practice_platform.dart';
 import '../services/startup_trace.dart';
-import '../services/runtime_endpoint_router.dart';
 import '../services/temp_cleanup_service.dart';
 import '../services/tts/tts_cache_store.dart';
 import '../utils/app_data_dir.dart';
@@ -74,7 +62,7 @@ class ThirdPartyStartupReport extends StartupReport {
 
   final bool isSupabaseReady;
 
-  /// 仅在本进程的 Purchases.configure 真正成功后为 true。
+  /// 纯端侧模式下恒为 false，保留字段兼容既有调用方。
   final bool isRevenueCatReady;
 }
 
@@ -91,51 +79,20 @@ final startupBootstrapperProvider = Provider<StartupBootstrapper>((ref) {
   );
 });
 
-/// 等待本次启动的地区结论后，按该结果选择 Supabase URL。
-final supabaseUrlForThisRunProvider = FutureProvider<String?>((ref) async {
-  final userRegion = await ref.watch(userRegionBootstrapProvider.future);
-  final isChinaUser = userRegion.isChinaUser;
-  final selectedUrl = auth_config.supabaseUrlForRegion(
-    isChinaUser: isChinaUser,
-  );
-  final selectionReady = auth_config.isAuthConfiguredForUrl(selectedUrl);
-  final skipReason = selectedUrl == null
-      ? 'selected_url_missing'
-      : auth_config.supabasePublishableKey.trim().isEmpty
-      ? 'publishable_key_missing'
-      : null;
-  AppLogger.log(
-    'Supabase',
-    'url selection region=${isChinaUser ? "china" : "global"} '
-        'endpoint=${auth_config.supabaseEndpointLabelForLog(selectedUrl)} '
-        'globalUrlConfigured=${auth_config.supabaseUrl.trim().isNotEmpty} '
-        'chinaUrlConfigured=${auth_config.chinaSupabaseUrl.trim().isNotEmpty} '
-        'publishableKeyConfigured='
-        '${auth_config.supabasePublishableKey.trim().isNotEmpty} '
-        'action=${selectionReady ? "initialize" : "skip"}'
-        '${skipReason == null ? "" : " reason=$skipReason"}',
-  );
-  return selectedUrl;
-});
-
 /// 本地数据初始化状态。首次构建先等待首帧，再运行关键本地初始化。
 final localStartupProvider =
     AsyncNotifierProvider<LocalStartupController, StartupReport>(
       LocalStartupController.new,
     );
 
-/// 非核心 SDK 初始化依赖本地数据成功，但其自身失败不会令 Future 悬挂。
+/// 纯端侧模式下仅保留本地音频与维护任务，不再初始化任何云端 SDK。
 final thirdPartyStartupProvider = FutureProvider<ThirdPartyStartupReport>((
   ref,
 ) async {
-  final localStartup = ref.watch(localStartupProvider.future);
-  final userRegionBootstrap = ref.watch(userRegionBootstrapProvider.future);
-  final supabaseUrlFuture = ref.watch(supabaseUrlForThisRunProvider.future);
-  await Future.wait([localStartup, userRegionBootstrap]);
-  final supabaseUrl = await supabaseUrlFuture;
+  await ref.watch(localStartupProvider.future);
   return ref
       .read(startupBootstrapperProvider)
-      .initializeThirdParty(supabaseUrl: supabaseUrl);
+      .initializeThirdParty(supabaseUrl: null);
 });
 
 class LocalStartupController extends AsyncNotifier<StartupReport> {
@@ -230,7 +187,7 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
     return StartupReport(List<StartupIssue>.unmodifiable(issues));
   }
 
-  /// 执行不会阻断本地学习的 SDK 与维护任务，并保证正常结束。
+  /// 执行本地音频、权限快照与维护任务；纯端侧模式不启动任何云端 SDK。
   @override
   Future<ThirdPartyStartupReport> initializeThirdParty({
     required String? supabaseUrl,
@@ -242,91 +199,6 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
       initEchoLoopAudioHandler,
     );
 
-    if (!kIsWeb && Platform.isIOS) {
-      activeStartupTrace?.mark(
-        'detached_scheduled',
-        fields: {'step': 'ios_network_permission_trigger'},
-      );
-      unawaited(
-        NetworkPermissionTrigger.trigger(
-          _prefs,
-          runtimeEndpointRouter.apiBaseUrl,
-        ),
-      );
-    }
-
-    var firebaseReady = false;
-    try {
-      await _trace('firebase_initialize', () {
-        return Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-      });
-      firebaseReady = true;
-    } catch (error, stackTrace) {
-      _recordIssue(issues, 'firebase_initialize', error, stackTrace);
-    }
-    if (firebaseReady && !kDebugMode && !Platform.isMacOS) {
-      await _runBestEffort(issues, 'firebase_analytics_disable', () {
-        return FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(false);
-      });
-    }
-
-    var supabaseReady = false;
-    String? restoredUserId;
-    final selectedSupabaseUrl = supabaseUrl;
-    final supabaseEndpointLabel = auth_config.supabaseEndpointLabelForLog(
-      selectedSupabaseUrl,
-    );
-    if (selectedSupabaseUrl != null &&
-        auth_config.isAuthConfiguredForUrl(selectedSupabaseUrl)) {
-      AppLogger.log(
-        'Supabase',
-        'initialize start endpoint=$supabaseEndpointLabel',
-      );
-      try {
-        await _trace('supabase_initialize', () {
-          return Supabase.initialize(
-            url: selectedSupabaseUrl,
-            publishableKey: auth_config.supabasePublishableKey,
-          );
-        });
-        supabaseReady = true;
-        restoredUserId = Supabase.instance.client.auth.currentSession?.user.id;
-        AppLogger.log(
-          'Supabase',
-          'initialize success endpoint=$supabaseEndpointLabel '
-              'sessionRestored=${restoredUserId != null}',
-        );
-      } catch (error, stackTrace) {
-        AppLogger.log(
-          'Supabase',
-          'initialize failed endpoint=$supabaseEndpointLabel '
-              'errorType=${error.runtimeType}',
-        );
-        _recordIssue(issues, 'supabase_initialize', error, stackTrace);
-      }
-    } else {
-      final skipReason = selectedSupabaseUrl == null
-          ? 'selected_url_missing'
-          : 'publishable_key_missing';
-      AppLogger.log(
-        'Supabase',
-        'initialize skipped endpoint=$supabaseEndpointLabel '
-            'reason=$skipReason',
-      );
-      activeStartupTrace?.mark(
-        'step_skipped',
-        fields: {
-          'step': 'supabase_initialize',
-          'reason': skipReason,
-          'endpoint': supabaseEndpointLabel,
-        },
-      );
-    }
-
-    final revenueCatReady = await _initializeRevenueCat(issues, restoredUserId);
-
     await _runBestEffort(issues, 'permission_snapshot_report', () async {
       final snapshot = await PermissionSnapshot.capture(_prefs);
       await _analyticsService.reportPermissionSnapshot(snapshot, _prefs);
@@ -334,17 +206,13 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
 
     _scheduleMaintenance();
     activeStartupTrace?.mark(
-      'third_party_services_ready',
-      fields: {
-        'issueCount': issues.length,
-        'supabaseReady': supabaseReady,
-        'revenueCatReady': revenueCatReady,
-      },
+      'local_services_ready',
+      fields: {'issueCount': issues.length},
     );
     return ThirdPartyStartupReport(
       issues: List<StartupIssue>.unmodifiable(issues),
-      isSupabaseReady: supabaseReady,
-      isRevenueCatReady: revenueCatReady,
+      isSupabaseReady: false,
+      isRevenueCatReady: false,
     );
   }
 
@@ -357,57 +225,6 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
       _recordIssue(issues, 'app_log_file_sink', error, stackTrace);
     } finally {
       activeStartupTrace?.attachLogger();
-    }
-  }
-
-  Future<bool> _initializeRevenueCat(
-    List<StartupIssue> issues,
-    String? restoredUserId,
-  ) async {
-    if (revenuecat_config.useLocalStoreKit) {
-      activeStartupTrace?.mark(
-        'step_skipped',
-        fields: {'step': 'revenuecat_initialize', 'reason': 'local_storekit'},
-      );
-      return false;
-    }
-    if (paddle_config.isPaddleCheckoutChannel) {
-      activeStartupTrace?.mark(
-        'step_skipped',
-        fields: {'step': 'revenuecat_initialize', 'reason': 'paddle_direct'},
-      );
-      return false;
-    }
-    if (!revenuecat_config.isRevenueCatConfigured) {
-      activeStartupTrace?.mark(
-        'step_skipped',
-        fields: {'step': 'revenuecat_initialize', 'reason': 'not_configured'},
-      );
-      return false;
-    }
-
-    try {
-      final configuration = PurchasesConfiguration(
-        revenuecat_config.revenueCatApiKey,
-      );
-      if (restoredUserId != null) configuration.appUserID = restoredUserId;
-      await _trace(
-        'revenuecat_initialize',
-        () => Purchases.configure(configuration),
-      );
-      // RevenueCat 必须先完成 configure；否则 Debug 模式下 setLogLevel 会触发
-      // PurchasesHybridCommon 的 native fatalError，直接终止启动进程。
-      if (kDebugMode) {
-        await _runBestEffort(
-          issues,
-          'revenuecat_log_level',
-          () => Purchases.setLogLevel(LogLevel.debug),
-        );
-      }
-      return true;
-    } catch (error, stackTrace) {
-      _recordIssue(issues, 'revenuecat_initialize', error, stackTrace);
-      return false;
     }
   }
 

@@ -61,12 +61,10 @@ void main() {
 
   /// 默认桩：L2 未命中 + upsert 成功
   void stubCacheMissAndUpsert() {
-    when(
-      () => dao.getByHash(any(), 'ai_dictionary_v2'),
-    ).thenAnswer((_) async => null);
-    when(
-      () => dao.upsert(any(), 'ai_dictionary_v2', any()),
-    ).thenAnswer((_) async {});
+    when(() => dao.getByHash(any(), 'ai_dictionary_v2'))
+        .thenAnswer((_) async => null);
+    when(() => dao.upsert(any(), 'ai_dictionary_v2', any()))
+        .thenAnswer((_) async {});
   }
 
   List<AiDictionaryStreamFrame> streamFrames(
@@ -115,16 +113,7 @@ void main() {
     expect(source.requiresNetwork, isTrue);
   });
 
-  test('缓存未命中且无 accessToken → 抛登录异常', () {
-    stubCacheMissAndUpsert();
-
-    expect(
-      source.lookup(const DictionaryLookupRequest(word: word)),
-      throwsA(isA<DictionaryAuthRequiredException>()),
-    );
-  });
-
-  test('未登录命中 L1 内存缓存 → 返回缓存结果且不调用 API', () async {
+  test('命中 L1 内存缓存 → 返回缓存结果且不调用 API', () async {
     stubCacheMissAndUpsert();
     stubWordStream(word, [_entry(word)]);
 
@@ -311,9 +300,8 @@ void main() {
   });
 
   test('L2 SQLite 命中 → 即时单帧、不调 API', () async {
-    when(
-      () => dao.getByHash(any(), 'ai_dictionary_v2'),
-    ).thenAnswer((_) async => jsonEncode(_entry(word).toJson()));
+    when(() => dao.getByHash(any(), 'ai_dictionary_v2'))
+        .thenAnswer((_) async => jsonEncode(_entry(word).toJson()));
 
     final result = await source.lookup(tokenReq);
 
@@ -328,10 +316,9 @@ void main() {
     );
   });
 
-  test('未登录命中 L2 SQLite 缓存 → 返回缓存结果且不调用 API', () async {
-    when(
-      () => dao.getByHash(any(), 'ai_dictionary_v2'),
-    ).thenAnswer((_) async => jsonEncode(_entry(word).toJson()));
+  test('命中 L2 SQLite 缓存 → 返回缓存结果且不调用 API', () async {
+    when(() => dao.getByHash(any(), 'ai_dictionary_v2'))
+        .thenAnswer((_) async => jsonEncode(_entry(word).toJson()));
 
     final result = await source.lookup(
       const DictionaryLookupRequest(word: word, targetLanguage: 'zh-CN'),

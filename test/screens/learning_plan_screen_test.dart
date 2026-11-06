@@ -38,7 +38,6 @@ import 'package:echo_loop/database/app_database.dart' show Bookmark;
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/providers/time_provider.dart';
 import 'package:echo_loop/services/speech_permission_service.dart';
-import 'package:echo_loop/features/auth/providers/auth_providers.dart';
 import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
@@ -47,7 +46,6 @@ import 'package:echo_loop/widgets/listen_and_repeat/listen_and_repeat_briefing_s
     show ListenAndRepeatBriefingSheet;
 import 'package:echo_loop/widgets/intensive_listen/intensive_listen_briefing_sheet.dart'
     show IntensiveListenBriefingSheet;
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
@@ -140,23 +138,6 @@ void main() {
     sentenceCount: 10,
     wordCount: 50,
   );
-
-  Session signedInSession() {
-    final user = User(
-      id: 'user-1',
-      appMetadata: const {'provider': 'email'},
-      userMetadata: const {},
-      aud: 'authenticated',
-      email: 'learner@example.com',
-      createdAt: '2026-06-12T00:00:00.000Z',
-    );
-    return Session(
-      accessToken: 'token',
-      tokenType: 'bearer',
-      user: user,
-      refreshToken: 'refresh',
-    );
-  }
 
   /// 创建测试用句子列表（模拟字幕加载后的 LP 状态）
   List<Sentence> createTestSentences({int count = 5}) {
@@ -356,9 +337,8 @@ void main() {
         ),
         audioEngineProvider.overrideWith(() => TestAudioEngine()),
         // 媒体就绪以本地文件存在为前提；测试中直接视为存在，避免真实 IO 挂起 FakeAsync。
-        localMediaFileExistsProvider(
-          item.id,
-        ).overrideWith((ref) => Future.value(true)),
+        localMediaFileExistsProvider(item.id)
+            .overrideWith((ref) => Future.value(true)),
         learningProgressProvider.overrideWith(
           () =>
               TestLearningProgressNotifier(withAutoCompletions(progressState)),
@@ -991,9 +971,8 @@ void main() {
         findsOneWidget,
       );
 
-      ScaffoldMessenger.of(
-        tester.element(find.byType(LearningPlanScreen)),
-      ).hideCurrentSnackBar();
+      ScaffoldMessenger.of(tester.element(find.byType(LearningPlanScreen)))
+          .hideCurrentSnackBar();
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Start practicing'));
@@ -1170,9 +1149,7 @@ void main() {
       // 验证 Provider 状态 isPaused=true
       final appContext = tester.element(find.byType(LearningPlanScreen));
       final container = ProviderScope.containerOf(appContext);
-      final p = container
-          .read(learningProgressProvider)
-          .progressMap['test-1'];
+      final p = container.read(learningProgressProvider).progressMap['test-1'];
       expect(p!.isPaused, isTrue);
     });
 
@@ -1520,89 +1497,6 @@ void main() {
         find.text('Audio file not found. The file may have been deleted.'),
         findsOneWidget,
       );
-    });
-
-    testWidgets('添加字幕入口 AI 转录音频过长时显示弹窗内错误提示', (tester) async {
-      tester.view.physicalSize = const Size(800, 1200);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final longAudio = testAudioItemNoTranscript.copyWith(
-        totalDuration: 31 * 60,
-        audioPath: 'audios/long.mp3',
-      );
-      await prefs.setBool('guide_v1_subtitle_sheet_transcription_seen', true);
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: dedupeOverrides([
-            analyticsOverride(),
-            sharedPreferencesProvider.overrideWithValue(prefs),
-            ...learningSettingsOverrides(),
-            audioLibraryProvider.overrideWith(
-              () =>
-                  TestAudioLibrary(AudioLibraryState(audioItems: [longAudio])),
-            ),
-            listeningPracticeProvider.overrideWith(
-              () => TestListeningPractice(
-                ListeningPracticeState(currentAudioItem: longAudio),
-              ),
-            ),
-            audioEngineProvider.overrideWith(() => TestAudioEngine()),
-            localMediaFileExistsProvider(
-              longAudio.id,
-            ).overrideWith((ref) => Future.value(true)),
-            learningProgressProvider.overrideWith(
-              () => TestLearningProgressNotifier(),
-            ),
-            learningSessionProvider.overrideWith(() => TestLearningSession()),
-            supabaseSessionProvider.overrideWithValue(AsyncData<Session?>(signedInSession())),
-            // 已登录用户视为已解锁（Pro），转录机制测试不被额度闸拦截。
-            subscriptionEntitlementOverride(),
-          ]),
-          child: MaterialApp.router(
-            locale: const Locale('en'),
-            supportedLocales: const [Locale('en'), Locale('zh')],
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            theme: AppTheme.light(),
-            routerConfig: GoRouter(
-              initialLocation: '/collections/col-1/test-1/plan',
-              routes: [
-                GoRoute(
-                  path: '/collections/:collectionId/:audioId/plan',
-                  builder: (context, state) => LearningPlanScreen(
-                    collectionId: state.pathParameters['collectionId']!,
-                    audioItemId: state.pathParameters['audioId']!,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Add Subtitle'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.widgetWithText(FilledButton, 'Start Transcription'),
-      );
-      await tester.pump();
-
-      expect(find.textContaining('Audio too long'), findsOneWidget);
-      expect(find.byType(SnackBar), findsNothing);
-
-      await tester.pump(const Duration(seconds: 12));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Audio too long'), findsNothing);
     });
 
     testWidgets('已完成盲听步骤可点击直接进入自由练习', (tester) async {
@@ -2335,9 +2229,8 @@ void main() {
           );
           expect(
             find.text(
-              AppLocalizations.of(
-                sheetContext,
-              )!.estimatedMinutes(effectiveRepeatCount),
+              AppLocalizations.of(sheetContext)!
+                  .estimatedMinutes(effectiveRepeatCount),
             ),
             findsOneWidget,
           );
@@ -2486,9 +2379,8 @@ void main() {
           audioItem: notDownloaded,
           listeningPracticeOverride: () => listening,
           extraOverrides: [
-            mediaReadinessProvider(
-              notDownloaded.id,
-            ).overrideWith((ref) => ref.watch(readiness)),
+            mediaReadinessProvider(notDownloaded.id)
+                .overrideWith((ref) => ref.watch(readiness)),
             communityDownloadProvider.overrideWith(() => community),
           ],
         ),
@@ -2513,9 +2405,8 @@ void main() {
           audioItem: notDownloaded,
           listeningPracticeOverride: () => listening,
           extraOverrides: [
-            mediaReadinessProvider(
-              notDownloaded.id,
-            ).overrideWith((ref) => ref.watch(readiness)),
+            mediaReadinessProvider(notDownloaded.id)
+                .overrideWith((ref) => ref.watch(readiness)),
             communityDownloadProvider.overrideWith(
               () => _RecordingCommunityDownload(),
             ),
@@ -2553,9 +2444,8 @@ void main() {
         createTestWidget(
           audioItem: notDownloaded,
           extraOverrides: [
-            mediaReadinessProvider(
-              notDownloaded.id,
-            ).overrideWith((ref) => const MediaFailed('network')),
+            mediaReadinessProvider(notDownloaded.id)
+                .overrideWith((ref) => const MediaFailed('network')),
             communityDownloadProvider.overrideWith(() => community),
           ],
         ),

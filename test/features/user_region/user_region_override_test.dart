@@ -11,6 +11,7 @@ import 'package:echo_loop/services/runtime_endpoint_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../helpers/mock_providers.dart';
 
 void main() {
@@ -42,7 +43,7 @@ void main() {
     );
   });
 
-  testWidgets('已保存的强制中国区让启动路由固定到中国区', (tester) async {
+  testWidgets('已保存的强制中国区在纯端侧仍固定到中国区', (tester) async {
     SharedPreferences.setMockInitialValues({
       'developer_user_region_override': 'china',
     });
@@ -74,7 +75,7 @@ void main() {
     final result = await tester.runAsync(() => future);
 
     expect(result?.source, UserRegionDecisionSource.developerOverride);
-    expect(calls, ['https://china.example']);
+    expect(calls, isEmpty);
     expect(router.apiRegion, ServiceEndpointRegion.china);
     expect(container.read(isChinaUserProvider), isTrue);
   });

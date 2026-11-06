@@ -13,13 +13,6 @@ import 'package:go_router/go_router.dart';
 
 import '../analytics/analytics_observer.dart';
 import '../analytics/analytics_providers.dart';
-import '../features/auth/screens/account_screen.dart';
-import '../features/subscription/screens/paywall_screen.dart';
-import '../features/auth/screens/check_email_screen.dart';
-import '../features/auth/screens/email_sign_in_screen.dart';
-import '../features/auth/screens/login_screen.dart';
-import '../features/auth/screens/password_sign_in_screen.dart';
-import '../features/auth/providers/auth_providers.dart';
 import '../features/community_collections/screens/discover_collections_screen.dart';
 import '../features/community_collections/screens/community_collection_detail_screen.dart';
 import '../features/community_collections/community_collection_routes.dart';
@@ -53,6 +46,7 @@ import '../screens/backup_restore_screen.dart';
 import '../screens/favorite_vocabulary_review_screen.dart';
 import '../screens/activity_calendar_screen.dart';
 import '../screens/review_statistics_screen.dart';
+import '../features/ai_speaking/screens/ai_speaking_screen.dart';
 import 'main_shell.dart';
 import 'route_transition_observer.dart';
 
@@ -71,13 +65,6 @@ abstract class AppRoutes {
   static const study = '/study';
   static const favorites = '/favorites';
   static const settings = '/settings';
-  static const login = '/login';
-  static const emailSignIn = '/login/email';
-  static const checkEmail = '/login/check-email';
-
-  /// 隐藏的邮箱密码登录入口（App Store / Google Play 审核员专用）。
-  static const passwordSignIn = '/login/password';
-  static const account = '/account';
 
   /// Podcast 搜索与订阅统一页，位于资源库主导航壳中。
   static const podcastSubscribeSegment = 'podcast-subscribe';
@@ -174,6 +161,9 @@ abstract class AppRoutes {
   /// 收藏词汇（单词+意群）调度式复习页路径
   static const favoriteVocabularyReview = '/favorite-vocabulary-review';
 
+  /// AI 口语自由练习页路径
+  static const aiSpeaking = '/ai-speaking';
+
   /// 活动日历页路径
   static const activityCalendar = '/activity-calendar';
   static const reviewStatistics = '/review-statistics';
@@ -186,9 +176,6 @@ abstract class AppRoutes {
 
   /// Onboarding 问卷页路径（仅首启新用户访问）
   static const onboardingSurvey = '/onboarding/survey';
-
-  /// 订阅计划介绍 / 购买页（Paywall）
-  static const paywall = '/paywall';
 
   /// 在「当前路由位置之下」push 一个嵌套路由子页。
   ///
@@ -312,18 +299,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.study,
     observers: [rootRouteObserver, AnalyticsObserver(analyticsService)],
     redirect: (context, state) {
-      final isAuthenticated = ref.read(isAuthenticatedProvider);
-      final isAuthRoute =
-          state.uri.path == AppRoutes.login ||
-          state.uri.path == AppRoutes.emailSignIn ||
-          state.uri.path == AppRoutes.checkEmail ||
-          state.uri.path == AppRoutes.passwordSignIn;
-      if (isAuthenticated && isAuthRoute) {
-        return AppRoutes.settings;
-      }
-      if (!isAuthenticated && state.uri.path == AppRoutes.account) {
-        return AppRoutes.settings;
-      }
       // /onboarding/survey 自身路径必须早返，否则在拦截路径上产生死循环
       if (state.uri.path == AppRoutes.onboardingSurvey) return null;
       // 首启新用户、未完成且未学习过 → 强制进入问卷
@@ -543,6 +518,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+      // AI 口语自由练习（全屏，无 tab bar）
+      GoRoute(
+        path: AppRoutes.aiSpeaking,
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const AiSpeakingScreen(),
+      ),
       // Onboarding 问卷（首启新用户全屏，无 tab bar / 不可返回）
       GoRoute(
         path: AppRoutes.backupRestore,
@@ -552,45 +533,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.onboardingSurvey,
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const OnboardingSurveyScreen(),
-      ),
-      // 账号与登录流程（全屏）
-      GoRoute(
-        path: AppRoutes.login,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const LoginScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.emailSignIn,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) {
-          final extra = state.extra;
-          final email = extra is String ? extra : '';
-          return EmailSignInScreen(initialEmail: email);
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.checkEmail,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) {
-          final extra = state.extra;
-          final email = extra is String ? extra : '';
-          return CheckEmailScreen(email: email);
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.passwordSignIn,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const PasswordSignInScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.account,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const AccountScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.paywall,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const PaywallScreen(),
       ),
       // 收藏句子复习（全屏）
       GoRoute(

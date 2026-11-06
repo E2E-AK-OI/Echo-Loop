@@ -5482,4 +5482,197 @@ class AppLocalizationsZh extends AppLocalizations {
   String learningPlanFromCollection(String collections) {
     return '来自：$collections';
   }
+
+  @override
+  String get aiSpeakingTitle => 'AI 口语练习';
+
+  @override
+  String get aiSpeakingEntryTitle => 'AI 口语练习';
+
+  @override
+  String get aiSpeakingEntrySubtitle => '与 AI 伙伴自由对话';
+
+  @override
+  String get aiSpeakingWelcomeTitle => '开始开口说吧';
+
+  @override
+  String get aiSpeakingWelcomeBody => '用英语聊任何话题，AI 伙伴会回应并温和地帮你改进。';
+
+  @override
+  String get aiSpeakingPrivacyNotice => '你的语音会发送到阿里云进行识别；API Key 只保存在本机。';
+
+  @override
+  String get aiSpeakingStarterDaily => '聊聊我的一天';
+
+  @override
+  String get aiSpeakingStarterInterview => '练习求职面试';
+
+  @override
+  String get aiSpeakingStarterWeekend => '规划周末旅行';
+
+  @override
+  String get aiSpeakingTapToFinish => '点击完成';
+
+  @override
+  String get aiSpeakingListening => '正在聆听…';
+
+  @override
+  String get aiSpeakingCancel => '取消';
+
+  @override
+  String get aiSpeakingFinalizing => '正在收尾…';
+
+  @override
+  String get aiSpeakingThinking => '正在思考…';
+
+  @override
+  String get aiSpeakingSpeaking => '正在朗读…';
+
+  @override
+  String get aiSpeakingInputHint => '输入英文，或点击麦克风';
+
+  @override
+  String get aiSpeakingSend => '发送';
+
+  @override
+  String get aiSpeakingStop => '停止';
+
+  @override
+  String get aiSpeakingRetry => '重试';
+
+  @override
+  String get aiSpeakingReplay => '重播';
+
+  @override
+  String get aiSpeakingNewConversation => '新对话';
+
+  @override
+  String get aiSpeakingNewConversationConfirm => '清空当前对话并开始新对话？';
+
+  @override
+  String get aiSpeakingConfirm => '确认';
+
+  @override
+  String get aiSpeakingSettingsTitle => 'AI 口语设置';
+
+  @override
+  String get aiSpeakingLlmSection => '大模型';
+
+  @override
+  String get aiSpeakingProviderLabel => '供应商';
+
+  @override
+  String get aiSpeakingProviderDeepSeek => 'DeepSeek';
+
+  @override
+  String get aiSpeakingProviderBailian => '阿里云百炼';
+
+  @override
+  String get aiSpeakingProviderOpenAi => 'OpenAI';
+
+  @override
+  String get aiSpeakingProviderCustom => '自定义（OpenAI 兼容）';
+
+  @override
+  String get aiSpeakingBaseUrlLabel => 'Base URL';
+
+  @override
+  String get aiSpeakingApiKeyLabel => 'API Key';
+
+  @override
+  String get aiSpeakingModelLabel => '模型';
+
+  @override
+  String get aiSpeakingTemperatureLabel => '温度';
+
+  @override
+  String get aiSpeakingSpeechSection => '语音服务（阿里云）';
+
+  @override
+  String get aiSpeakingDashscopeKeyLabel => 'DashScope API Key';
+
+  @override
+  String get aiSpeakingWorkspaceIdLabel => 'Workspace ID（可选）';
+
+  @override
+  String get aiSpeakingAsrModelLabel => 'ASR 模型';
+
+  @override
+  String get aiSpeakingTtsModelLabel => 'TTS 模型';
+
+  @override
+  String get aiSpeakingVoiceLabel => '音色';
+
+  @override
+  String get aiSpeakingRateLabel => '语速';
+
+  @override
+  String get aiSpeakingAutoPlayLabel => '自动朗读回复';
+
+  @override
+  String get aiSpeakingPreview => '试听音色';
+
+  @override
+  String get aiSpeakingPrivacyTitle => '隐私与费用';
+
+  @override
+  String get aiSpeakingPrivacyBody =>
+      '音频与文本会从本机直接发送到你配置的模型服务商，费用由服务商按用量收取；API Key 仅保存在本机安全存储中。';
+
+  @override
+  String get aiSpeakingUnsupportedPlatform => 'AI 口语练习目前仅支持 Android。';
+
+  @override
+  String get aiSpeakingPermissionDenied => '需要麦克风权限。';
+
+  @override
+  String get aiSpeakingOpenSettings => '打开系统设置';
+
+  @override
+  String get aiSpeakingMissingConfig => '请先在 AI 口语设置中填写 API Key。';
+
+  @override
+  String get aiSpeakingNoSpeech => '没有识别到语音，请重试。';
+
+  @override
+  String get aiSpeakingErrorAsr => '语音识别失败。';
+
+  @override
+  String get aiSpeakingErrorLlm => 'AI 回复失败。';
+
+  @override
+  String get aiSpeakingErrorTts => '语音播放失败。';
+
+  @override
+  String get aiSpeakingErrorUnauthorized => 'API Key 被拒绝，请检查设置。';
+
+  @override
+  String get aiSpeakingErrorRateLimited => '请求过于频繁，请稍后再试。';
+
+  @override
+  String get aiSpeakingErrorNetwork => '网络错误，请检查连接。';
+
+  @override
+  String get aiSpeakingErrorServer => '服务暂时不可用。';
+
+  @override
+  String get aiSpeakingSave => '保存';
+
+  @override
+  String get aiSpeakingSaved => '已保存';
+
+  @override
+  String get aiSpeakingKeyConfigured => '已配置';
+
+  @override
+  String get aiSpeakingKeyMissing => '未配置';
+
+  @override
+  String get aiSpeakingCustomModel => '请在下方输入模型名称';
+
+  @override
+  String get aiSpeakingInvalidBaseUrl => '请输入有效的 http(s) 地址';
+
+  @override
+  String get aiSpeakingPreviewFailed => '音色试听失败。';
 }

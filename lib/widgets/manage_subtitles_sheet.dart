@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:universal_io/io.dart';
+
 import '../analytics/models/event_names.dart';
 import '../features/auth/providers/auth_providers.dart';
 import '../features/auth/sign_in_required_dialog.dart';
@@ -101,8 +102,8 @@ class ManageSubtitlesSheet extends ConsumerStatefulWidget {
 }
 
 class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
-  /// 默认选中首位「AI 转录」（与选项排序一致，避免高亮落在末尾）。
-  _SubtitleAction _selectedAction = _SubtitleAction.aiTranscription;
+  /// 纯端侧模式默认使用本地（离线）转录。
+  _SubtitleAction _selectedAction = _SubtitleAction.offlineTranscription;
   String _selectedLanguage = 'en';
 
   /// 播客字幕下载进行中（防重复点击，并在按钮上显示加载态）。
@@ -126,10 +127,8 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
   final OverlayPortalController _modelMenuController =
       OverlayPortalController();
 
-  /// 是否展示本地离线转录入口。
-  ///
-  /// 当前本地转录效果不稳定，先隐藏入口；保留实现和状态处理，便于后续恢复。
-  bool get _showOfflineTranscriptionEntry => false;
+  /// 是否展示本地离线转录入口；纯端侧模式常开。
+  bool get _showOfflineTranscriptionEntry => true;
 
   @override
   void initState() {
@@ -944,28 +943,7 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
             ),
             const SizedBox(height: AppSpacing.s),
           ],
-          // 排序：AI 转录（推荐默认）→ 本地转录（离线替代）→ 本地上传（进阶手动）。
-          _buildOptionTile(
-            theme: theme,
-            icon: Icons.auto_awesome_outlined,
-            title: l10n.aiTranscription,
-            subtitle: l10n.aiTranscriptionSubtitle,
-            selected: _selectedAction == _SubtitleAction.aiTranscription,
-            onTap: () => setState(
-              () => _selectedAction = _SubtitleAction.aiTranscription,
-            ),
-          ),
-          // AI 转录语言选择（动画展开/收起）
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: _selectedAction == _SubtitleAction.aiTranscription
-                ? _buildLanguageSelector(l10n, theme, audioItem)
-                : const SizedBox(width: double.infinity, height: 0),
-          ),
-          const SizedBox(height: AppSpacing.s),
-          // 本地（离线）转录入口暂时隐藏：当前识别效果不稳定，保留代码便于后续恢复。
+          // 纯端侧模式仅保留本地转录与手动上传；AI 转录依赖自建后端已下线。
           if (_showOfflineTranscriptionEntry) ...[
             _buildOptionTile(
               theme: theme,
@@ -1271,110 +1249,6 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
     );
   }
 
-  /// 构建语言选择区域（浅色背景圆角容器）
-  Widget _buildLanguageSelector(
-    AppLocalizations l10n,
-    ThemeData theme,
-    AudioItem audioItem,
-  ) {
-    final colorScheme = theme.colorScheme;
-    final currentLabel = _selectedLanguage == 'auto'
-        ? l10n.languageAutoDetect
-        : l10n.languageEnglish;
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.s, left: 4, right: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 单行：标签在左（带语言图标），可点击的语言胶囊靠右
-          Row(
-            children: [
-              Icon(
-                Icons.translate_rounded,
-                size: 18,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: AppSpacing.s),
-              Expanded(
-                child: Text(
-                  l10n.selectLanguage,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.s),
-              // 语言胶囊：填充主色调，呼应选中的 AI 转录卡片
-              PopupMenuButton<String>(
-                initialValue: _selectedLanguage,
-                tooltip: '',
-                position: PopupMenuPosition.under,
-                offset: const Offset(0, 4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                onSelected: (value) =>
-                    setState(() => _selectedLanguage = value),
-                padding: EdgeInsets.zero,
-                itemBuilder: (context) => [
-                  _buildLanguageMenuItem('en', l10n.languageEnglish, theme),
-                  _buildLanguageMenuItem(
-                    'auto',
-                    l10n.languageAutoDetect,
-                    theme,
-                  ),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        currentLabel,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.unfold_more_rounded,
-                        size: 18,
-                        color: colorScheme.primary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.s),
-          _buildAutoMergeToggle(l10n, theme),
-          // 仅在该选项已转录时提示，混合语言不支持的提示已移除
-          if (_isAiDisabled(audioItem))
-            Padding(
-              padding: const EdgeInsets.only(top: 6, left: 26),
-              child: Text(
-                l10n.alreadyTranscribedWithOption,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   /// 「自动合并短句」开关行（AI 转录与本地转录共用）。
   ///
   /// AI 转录：透传给后端返回合并/未合并基线；本地转录：控制客户端把 VAD
@@ -1421,39 +1295,6 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
           },
         ),
       ],
-    );
-  }
-
-  /// 构建语言下拉菜单项（选中项前置勾选标记）
-  PopupMenuItem<String> _buildLanguageMenuItem(
-    String value,
-    String label,
-    ThemeData theme,
-  ) {
-    final selected = _selectedLanguage == value;
-    return PopupMenuItem<String>(
-      value: value,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 24,
-            child: selected
-                ? Icon(
-                    Icons.check_rounded,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  )
-                : null,
-          ),
-          Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
     );
   }
 

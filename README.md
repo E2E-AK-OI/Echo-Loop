@@ -15,7 +15,7 @@
 
   <p>
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
-    <img src="https://img.shields.io/badge/Platform-iOS%20%C2%B7%20Android%20%C2%B7%20macOS%20%C2%B7%20Windows-brightgreen.svg" alt="Platform" />
+    <img src="https://img.shields.io/badge/Platform-Android-brightgreen.svg" alt="Platform" />
     <a href="https://github.com/echo-loop/Echo-Loop/releases/latest"><img src="https://img.shields.io/github/v/release/echo-loop/Echo-Loop?label=release&color=orange" alt="Latest release" /></a>
     <a href="https://github.com/echo-loop/Echo-Loop/releases"><img src="https://img.shields.io/github/downloads/echo-loop/Echo-Loop/total?label=downloads" alt="Total release downloads" /></a>
     <a href="https://github.com/echo-loop/Echo-Loop/commits/main"><img src="https://img.shields.io/github/last-commit/echo-loop/Echo-Loop" alt="Last commit" /></a>
@@ -26,8 +26,7 @@
   </p>
 
   <p>
-    <a href="https://apps.apple.com/app/id6760324074"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="48" /></a>
-    <a href="https://play.google.com/store/apps/details?id=app.echoloop"><img src="assets/badges/google-play-en.png" alt="Get it on Google Play" height="40" /></a>
+    <a href="https://github.com/echo-loop/Echo-Loop/releases"><img src="https://img.shields.io/badge/Android-下载%20APK-3DDC84?logo=android&logoColor=white&style=for-the-badge" alt="Android APK" height="48" /></a>
   </p>
 </div>
 
@@ -78,11 +77,12 @@
 - 🧩 **长难句意群划分**：长句按意群切分，复杂句拆开理解，降低听懂难度。
 - ⭐ **难句收藏与专项复习**：难句自动归档，可集中跟读、反复重练，避免“标了就忘”。
 - 📚 **语境化闪卡复习**：收藏单词和意群，结合原句上下文复习，在语境中记忆，而不是孤立背词。
-- 💡 **AI 翻译、解析与词汇讲解**：支持双语翻译、句子解析、单词用法和搭配讲解，按需展开，不打断学习节奏。
+- 💡 **AI 翻译、解析与词汇讲解（BYOK 直连）**：支持双语翻译、句子解析、单词用法和搭配讲解，填入自己的 OpenAI 兼容供应商 Key 即可使用，按需展开，不打断学习节奏。
 - 📍 **断点续学**：自动记录学习阶段和当前句子，下次打开直接继续，5 分钟碎片时间也能练。
 - 📊 **学习数据统计**：记录学习时长、输入输出比例、唯一词汇量，让练了多少、说了多少一目了然。
 - 🎙️ **跟读 AI 评测**：自动对齐识别结果与原文，高亮命中词，并给出跟读评级。
-- 🎧 **导入本地音频 + AI 字幕**：支持批量导入本地音频，可导入本地字幕，也可用 AI 自动转录生成字幕。
+- 🗣️ **AI 口语自由练习（Android）**：用英语自由对话，AI 伙伴即时回复；支持 DeepSeek / 阿里云百炼 / OpenAI / 自定义 OpenAI 兼容供应商，自填 API Key，模型与温度可调，语音识别与朗读可使用阿里云音色。
+- 🎧 **导入本地音频 + 离线字幕**：支持批量导入本地音频，可导入本地字幕，也可用本地离线模型生成字幕。
 
 ---
 
@@ -166,28 +166,11 @@ flowchart LR
 
 ## 📥 下载与试用
 
-<table>
-  <tr>
-    <td valign="middle">
-      <p>
-        <a href="https://apps.apple.com/app/id6760324074"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="App Store" height="48" /></a>
-        &nbsp;
-        <a href="https://play.google.com/store/apps/details?id=app.echoloop"><img src="assets/badges/google-play-en.png" alt="Get it on Google Play" height="40" /></a>
-        &nbsp;
-        <a href="https://github.com/echo-loop/Echo-Loop/releases"><img src="https://img.shields.io/badge/Android-下载%20APK-3DDC84?logo=android&logoColor=white&style=for-the-badge" alt="Android APK" height="48" /></a>
-      </p>
-      <p><sub>桌面端：macOS 开发中 · Windows 规划中 · Web 暂无计划</sub></p>
-    </td>
-    <td valign="middle" align="center" width="120">
-      <img src="assets/qr/app-store.png" alt="App Store 二维码" width="110" /><br/>
-      <sub>App Store</sub>
-    </td>
-    <td valign="middle" align="center" width="120">
-      <img src="assets/qr/google-play.png" alt="Google Play 二维码" width="110" /><br/>
-      <sub>Google Play</sub>
-    </td>
-  </tr>
-</table>
+本分支当前仅提供 **Android APK**，可从 [GitHub Releases](https://github.com/echo-loop/Echo-Loop/releases) 下载安装。上游 App Store / Google Play 版本不包含本分支的纯端侧改造。
+
+- 无需账号、登录或订阅
+- 学习数据只存本机，支持本地备份与恢复
+- AI 能力通过自己的 OpenAI 兼容 API Key 直连供应商
 
 ---
 
@@ -198,48 +181,43 @@ flowchart LR
 
 基础功能完全免费，不限次数、不限数量：
 
-- **无限导入素材**：本地文件、链接、百度网盘、播客订阅都能导入，数量不限
+- **无限导入素材**：本地文件、音频直链、用户自行添加的播客源都能导入，数量不限
 - **无限收藏**：难句、单词、意群随便收藏，没有上限
 - **完整学习闭环**：精听、跟读、盲听、复述，加上 7 轮间隔复习和到点提醒
 - **难句专项复习 + 语境化闪卡**
 - **跟读评测**：用设备自带的语音识别，不计次数
-- **本地离线转录字幕**：下载模型后在本机生成字幕，不用登录
+- **本地离线转录字幕**：下载模型后在本机生成字幕，不需要账号或登录
 - **离线词典、学习数据统计、导出 PDF 笔记、备份与恢复**
 
-AI 讲解类功能每月有一份免费额度，大多数用户日常学习够用。只有 AI 用得很多的用户，才需要在 App 内升级会员。
+所有功能免费，没有账号、订阅或额度限制。AI 功能采用 BYOK 方式：你在设置页填入自己的供应商 API Key，调用费用由供应商按用量直接结算。
 
 </details>
 
 <details>
-<summary><strong>哪些功能会消耗 AI 额度？</strong></summary>
+<summary><strong>哪些功能需要自己的 API Key？</strong></summary>
 
-只有「AI 讲解」类功能会消耗额度：AI 翻译、句子解析、意群拆分、词汇解析、AI 学习助手、复述评估和云端字幕转录。上面列的免费功能都不消耗额度。
-
-</details>
-
-<details>
-<summary><strong>免费额度用完了怎么办？</strong></summary>
-
-学习不受影响，照常练。AI 功能等下个月额度重置后就能继续用；等不及的话，可以在 App 内升级会员。
+AI 翻译、句子解析、意群拆分、词汇解析、AI 学习助手与 AI 口语自由练习需要先在设置页配置自己的 OpenAI 兼容供应商 API Key。其余本地功能不需要联网，也不需要 Key。
 
 </details>
 
 <details>
-<summary><strong>开源项目为什么还有付费？</strong></summary>
+<summary><strong>没有 API Key 还能用吗？</strong></summary>
 
-代码完全开源（AGPL-3.0）。AI 功能每调用一次，都要向大模型服务商付费，会员收入用来支付这部分开销，让项目能持续维护下去。
+可以。精听、跟读、盲听、复述、收藏复习、本地转录、备份等核心学习功能完全可用；需要 AI 讲解或 AI 口语时，再在设置页填入自己的 Key。
+
+</details>
+
+<details>
+<summary><strong>开源项目为什么还要自己付 AI 费用？</strong></summary>
+
+代码完全开源（AGPL-3.0）。应用不设自建后台，也没有会员加价：AI 请求由你的设备直接发往你选择的模型供应商，费用由供应商按你的实际用量结算。
 
 </details>
 
 <details>
 <summary><strong>支持哪些平台？</strong></summary>
 
-目前主力是 **iOS 和 Android**，在 App Store、Google Play 下载，或者在 [Releases](https://github.com/echo-loop/Echo-Loop/releases) 下载 Android APK。macOS 和 Windows 的桌面版正在开发中，以后会正式发布。
-
-想现在就在电脑上用，可以这样装：
-
-- **Mac（M 系列芯片）**：打开 Mac App Store 搜索 Echo Loop，直接安装 iOS 版
-- **Windows**：先安装腾讯应用宝，再在应用宝里安装 Echo Loop 的 Android APK
+当前维护的纯端侧版本仅发布 **Android APK**，可从 [Releases](https://github.com/echo-loop/Echo-Loop/releases) 下载安装。上游原版的 App Store / Google Play 渠道不包含本分支的纯端侧改造。
 
 </details>
 
@@ -256,7 +234,7 @@ AI 讲解类功能每月有一份免费额度，大多数用户日常学习够�
 - **音频**：mp3、m4a、wav、aac、flac
 - **视频**：mp4、mov、m4v、mkv（可隐藏画面当音频练）
 - **字幕**：srt、vtt、lrc，与音频同名会自动配对；没有字幕可以用 AI 转录生成
-- **来源**：本地文件、音频直链、百度网盘、播客订阅
+- **来源**：本地文件、音频直链、用户自行添加的播客源
 
 播客、TED、美剧片段、教材音频都可以，建议选**你感兴趣、难度略高于当前水平**的内容。
 
@@ -279,7 +257,7 @@ AI 讲解类功能每月有一份免费额度，大多数用户日常学习够�
 <details>
 <summary><strong>没有网络能用吗？</strong></summary>
 
-可以。学习流程、复习、收藏、跟读评测、本地转录都能离线使用，只有云端 AI 功能需要联网。
+可以。学习流程、复习、收藏、跟读评测、本地转录与备份都能离线使用；只有 AI 讲解、AI 口语和在线播客源需要联网。
 
 </details>
 
@@ -313,13 +291,13 @@ AI 讲解类功能每月有一份免费额度，大多数用户日常学习够�
 - [x] 难句收藏 + 专项复习
 - [x] 语境化闪卡复习
 - [x] AI 翻译 / 句子解析
-- [x] iOS / macOS 原生 ASR 跟读评测
+- [x] Android ASR 跟读评测
 - [x] 断点续学
 - [x] 学习数据统计
 
 ### 🚧 2 · AI 能力
 
-- [ ] AI 口语陪练
+- [x] AI 口语自由练习（Android，BYOK）
 - [x] AI 学习助手（随时答疑）
 - [x] AI 查词
 - [ ] 个性化素材推荐
@@ -328,12 +306,12 @@ AI 讲解类功能每月有一份免费额度，大多数用户日常学习够�
 
 - [ ] 自定义任务流
 - [ ] 连胜激励 / 学习勋章
-- [ ] macOS / Windows 桌面版正式发布
+- [x] Android APK 构建与真机安装
 
-### 🔭 4 · 内容生态
+### ✅ 4 · 本地内容管理
 
-- [ ] 官方精选合集（按主题 + 难度分级）
-- [ ] 用户合集分享 / UGC 学习材料
+- [x] 本地音频与字幕导入
+- [x] 本地备份与恢复
 
 ---
 
@@ -372,25 +350,13 @@ AI 讲解类功能每月有一份免费额度，大多数用户日常学习够�
 ```bash
 git clone git@github.com:echo-loop/Echo-Loop.git
 cd Echo-Loop
-cp .dev.env.template .dev.env   # 填入 Supabase / Google 等编译期变量
 flutter pub get
 dart run build_runner build
-flutter run -d <ios|android|macos> --dart-define-from-file=.dev.env
+flutter run -d android
 ```
 
-> Supabase 与 Google 等编译期配置放在 `.dev.env`（调试）/ `.prod.env`（发布），通过
-> `--dart-define-from-file` 注入。这两个文件已被 `.gitignore`，请勿提交。
-> 全球 API 默认地址与中国 API 地址可用编译期变量覆盖；全球和中国模型 CDN 地址配置在
-> `lib/config/regional_service_endpoints.dart`；
-> 全球 API 默认地址为 `https://www.echo-loop.top`，可通过 `API_BASE_URL` 编译期变量覆盖；
-> 中国 API 默认地址为 `https://www.echo-loop.cn`，可通过 `API_CHINA_BASE_URL` 编译期变量覆盖，
-> 本地构建可在 `.prod.env` 中覆盖；GitHub Actions CI/Release 会直接将对应 GitHub Variables 传给构建命令；
-> release 包通过统一的 `isChinaUser` 结论选择区域：中国 Apple Storefront、设备国家码或
-> `/api/v1/client/config` 的 `context.countryCode` 任一返回 `CN`/`CHN` 即选择中国，
-> 不需要按地区构建。同一个 release 包包含全球与中国 API 候选地址。首次没有中国地区证据时先使用全球 API；
-> 地区结论变化后先保留当前 API，并立即用配置请求探测新的首选区域；遇到网络错误或 5xx
-> 时尝试另一区域一次。探测成功后切换到首选区域；备用成功后当前会话 API 暂用可用地址，
-> 后续配置刷新会重新探测首选区域。模型 CDN 始终跟随 `isChinaUser`；未设置 API 覆盖变量时使用源码默认地址。
+> 本分支已改为纯端侧：不需要 Supabase / Google / Paddle 等编译期配置，也不需要 `.dev.env`。
+> 离线模型等资源 CDN 地址仍配置在 `lib/config/regional_service_endpoints.dart`，可按需修改。
 
 </details>
 
@@ -459,15 +425,7 @@ test/                  # 单元 / Widget 测试
 **运行**
 
 ```bash
-flutter run -d ios            # iOS
-flutter run -d android        # Android
-flutter run -d macos          # macOS（开发中，未发布）
-flutter run -d chrome         # Web（仅调试用，无发布计划）
-
-# iOS 模拟器
-xcrun simctl list devices available
-xcrun simctl boot <DEVICE_UDID>
-open -a Simulator
+flutter run -d android        # Android（当前唯一发布平台）
 ```
 
 **测试 / 质量检查**
@@ -475,7 +433,7 @@ open -a Simulator
 ```bash
 flutter analyze                          # 静态分析
 flutter test                             # 全部测试
-flutter test integration_test -d macos   # 集成测试
+flutter test integration_test -d android # 集成测试
 # Maestro UI 烟测（先启动设备并安装开发包；Android 开发包示例）
 MAESTRO_APP_ID=app.echoloop.dev scripts/test_maestro.sh
 # Android 真机：自动构建、安装 dev 包并运行 Study 测试
@@ -485,8 +443,7 @@ scripts/test_maestro_android.sh --device <adb-serial>
 dart format .                            # 格式化
 ```
 
-> Maestro CLI 安装：`curl -fsSL https://get.maestro.mobile.dev | bash`。iOS 开发包请将
-> `MAESTRO_APP_ID` 改为 `top.echo-loop.dev`；测试流存放在 `maestro/`。
+> Maestro CLI 安装：`curl -fsSL https://get.maestro.mobile.dev | bash`；测试流存放在 `maestro/`。
 
 **代码生成**（修改 Riverpod Provider 后）
 
@@ -497,23 +454,18 @@ dart run build_runner build
 **构建**
 
 ```bash
-# Supabase / Google 等编译期变量从 env 文件注入（发布用 .prod.env）
-flutter build macos --dart-define-from-file=.prod.env
-flutter build apk   --dart-define-from-file=.prod.env
-flutter build ios   --dart-define-from-file=.prod.env
+# 当前仅发布 Android
+flutter build apk --release
 
 # 真机运行
-flutter run --release -d <DEVICE_ID> --dart-define-from-file=.dev.env
+flutter run --release -d <DEVICE_ID>
 ```
-
-> 发布脚本 `scripts/run_simulator.sh`（读 `.dev.env`）、`scripts/release_{android,ios,macos}.sh`（读 `.prod.env`）
-> 已内置 `--dart-define-from-file`，无需手动传参。
 
 **环境要求**
 
 - Flutter SDK 3.9.2+
-- iOS 模拟器 / Android 模拟器 / 真机
-- 桌面端：macOS / Windows / Linux 开发环境
+- Android SDK、JDK 17
+- Android 模拟器或真机
 
 </details>
 

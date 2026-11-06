@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/features/podcast/podcast_transcript_downloader.dart';
-import 'package:echo_loop/features/remote_config/remote_config.dart';
-import 'package:echo_loop/features/remote_config/remote_config_providers.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
@@ -21,9 +19,7 @@ import 'package:echo_loop/providers/learning_session/blind_listen_player_provide
 import 'package:echo_loop/providers/settings_provider.dart';
 import 'package:echo_loop/providers/transcription_task_provider.dart';
 import 'package:echo_loop/providers/local_transcription_task_provider.dart';
-import 'package:echo_loop/features/subscription/models/premium_feature.dart';
 import 'package:echo_loop/features/subscription/models/ai_quota_rejection.dart';
-import 'package:echo_loop/features/subscription/services/free_allowance_policy.dart';
 import 'package:echo_loop/services/app_logger.dart';
 import 'package:echo_loop/services/transcription_api_client.dart';
 import 'package:echo_loop/utils/transcript_picker.dart';
@@ -78,14 +74,9 @@ bool _isOptionSelected(String title) {
       .isNotEmpty;
 }
 
-class _DenyAiAllowancePolicy implements FreeAllowancePolicy {
-  const _DenyAiAllowancePolicy();
-
-  @override
-  bool allows(PremiumFeature feature) => false;
-}
-
 void main() {
+  late SharedPreferences defaultPrefs;
+
   Session signedInSession() {
     final user = User(
       id: 'user-1',
@@ -169,14 +160,19 @@ void main() {
           subscriptionEntitlementOverride(pro: subscriptionPro),
           ...learningSettingsOverrides(
             podcastTranscriptReminderShown: podcastTranscriptReminderShown,
-            prefs: prefs,
+            prefs: prefs ?? defaultPrefs,
           ),
           ...extraOverrides,
         ]),
       );
     }
 
-    setUp(() {
+    setUp(() async {
+      // 默认已提醒过播客字幕风险；提醒流程用例会单独重置为空。
+      SharedPreferences.setMockInitialValues({
+        LearningSettingsKeys.podcastTranscriptReminderShown: true,
+      });
+      defaultPrefs = await SharedPreferences.getInstance();
       AppLogger.instance.clear();
     });
 
@@ -192,7 +188,7 @@ void main() {
 
         // 两个 Radio 选项
         expect(find.text('Local Upload'), findsOneWidget);
-        expect(find.text('Cloud Transcription'), findsOneWidget);
+        expect(find.text('On-Device Transcription'), findsOneWidget);
 
         // 无删除按钮
         expect(find.byTooltip('Delete Subtitles'), findsNothing);
@@ -222,32 +218,6 @@ void main() {
           tester.element(find.byType(ManageSubtitlesSheet)),
         );
         expect(deleteButton.color, theme.colorScheme.error);
-      });
-
-      testWidgets('有 AI(en) 字幕音频：AI 同语言禁用', (tester) async {
-        final item = createTestAudioItem().copyWith(
-          transcriptSource: TranscriptSource.ai,
-          transcriptLanguage: 'en',
-        );
-        await tester.pumpWidget(buildSheet(item));
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-
-        // 切换到 AI 选项
-        await tester.tap(find.text('Cloud Transcription'));
-        await tester.pumpAndSettle();
-
-        // 切换语言到 English（与现有字幕语言相同）
-        await tester.tap(find.text('English'));
-        await tester.pumpAndSettle();
-
-        // AI 选中 + en 选中 → 按钮显示"已使用该选项转录"
-        expect(
-          find.text('Already transcribed with this option'),
-          findsAtLeast(1),
-        );
       });
     });
 
@@ -321,96 +291,6 @@ void main() {
         expect(find.byTooltip('Delete Subtitles'), findsOneWidget);
       });
 
-      testWidgets('AI(en) 已转录 + 选中 auto → 按钮可点击', (tester) async {
-        final item = createTestAudioItem().copyWith(
-          transcriptSource: TranscriptSource.ai,
-          transcriptLanguage: 'en',
-        );
-        await tester.pumpWidget(buildSheet(item));
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-
-        // 切换到 AI 选项
-        await tester.tap(find.text('Cloud Transcription'));
-        await tester.pumpAndSettle();
-
-        // 切换到 auto（与已转录的 en 不同）→ 按钮可点击
-        await tester.tap(find.text('English'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Auto Detect'));
-        await tester.pumpAndSettle();
-
-        final filledButton = tester.widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'Start Transcription'),
-        );
-        expect(filledButton.onPressed, isNotNull);
-      });
-
-      testWidgets('未登录点击 AI 转录时显示登录弹窗', (tester) async {
-        final item = createTestAudioItem(transcriptPath: null);
-        await tester.pumpWidget(buildSheet(item));
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-
-        await tester.tap(
-          find.widgetWithText(FilledButton, 'Start Transcription'),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text('Sign in to use AI transcription'), findsOneWidget);
-        expect(
-          find.textContaining(
-            'AI transcription uses the cloud transcription service',
-          ),
-          findsOneWidget,
-        );
-
-        await tester.tap(find.text('Cancel'));
-        await tester.pumpAndSettle();
-        expect(find.text('Sign in to use AI transcription'), findsNothing);
-      });
-
-      testWidgets('免费用户点击 AI 转录时先显示额度提示', (tester) async {
-        SharedPreferences.setMockInitialValues({});
-        final prefs = await SharedPreferences.getInstance();
-        final item = createTestAudioItem(transcriptPath: null);
-        await tester.pumpWidget(
-          buildSheet(
-            item,
-            session: signedInSession(),
-            subscriptionPro: false,
-            extraOverrides: [
-              sharedPreferencesProvider.overrideWithValue(prefs),
-              freeAllowancePolicyProvider.overrideWithValue(
-                const _DenyAiAllowancePolicy(),
-              ),
-            ],
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.widgetWithText(FilledButton, 'Start Transcription'),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.text(
-            "This month's free AI subtitle transcription quota is used up",
-          ),
-          findsOneWidget,
-        );
-        await tester.tap(find.text('Got it'));
-        await tester.pumpAndSettle();
-        expect(find.byType(ManageSubtitlesSheet), findsOneWidget);
-      });
-
       testWidgets('后端转录额度用尽时清状态并显示额度提示', (tester) async {
         SharedPreferences.setMockInitialValues({});
         final prefs = await SharedPreferences.getInstance();
@@ -471,46 +351,6 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('File too large (max 25MB)'), findsOneWidget);
-      });
-
-      testWidgets('AI 转录读取远程时长限制并在弹窗内显示错误提示', (tester) async {
-        final item = createTestAudioItem(totalDuration: 2 * 60)
-            .copyWith(transcriptSource: TranscriptSource.local);
-        await tester.pumpWidget(
-          buildSheet(
-            item,
-            session: signedInSession(),
-            extraOverrides: [
-              remoteTranscriptionLimitsProvider.overrideWithValue(
-                const RemoteTranscriptionLimits(maxDurationSeconds: 60),
-              ),
-            ],
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-        await tester.pump();
-
-        await tester.tap(find.text('Cloud Transcription'));
-        await tester.pumpAndSettle();
-
-        await tester.tap(
-          find.widgetWithText(FilledButton, 'Start Transcription'),
-        );
-        await tester.pump();
-
-        expect(
-          find.textContaining('Audio too long (max 1 minutes)'),
-          findsOneWidget,
-        );
-        expect(find.byType(SnackBar), findsNothing);
-
-        await tester.pump(const Duration(seconds: 12));
-        await tester.pumpAndSettle();
-
-        expect(find.textContaining('Audio too long'), findsNothing);
       });
 
       testWidgets('大文件预压缩时显示音频压缩中状态', (tester) async {
@@ -675,12 +515,10 @@ void main() {
         await tester.tap(find.text('Open'));
         await tester.pumpAndSettle();
 
-        // 切换到 AI
-        await tester.tap(find.text('Cloud Transcription'));
-        await tester.pumpAndSettle();
+        // 默认选中本地转录，语言选择显示。
         expect(find.text('Select Language'), findsOneWidget);
 
-        // 切换回本地上传
+        // 切换到本地上传
         await tester.tap(find.text('Local Upload'));
         await tester.pumpAndSettle();
 
@@ -747,14 +585,14 @@ void main() {
     });
 
     group('本地（离线）转录', () {
-      testWidgets('无字幕音频：隐藏本地转录选项', (tester) async {
+      testWidgets('无字幕音频：显示本地转录选项', (tester) async {
         final item = createTestAudioItem(transcriptPath: null);
         await tester.pumpWidget(buildSheet(item));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Open'));
         await tester.pumpAndSettle();
 
-        expect(find.text('On-Device Transcription'), findsNothing);
+        expect(find.text('On-Device Transcription'), findsOneWidget);
       });
 
       // 本地转录入口暂时隐藏，保留展开态测试便于后续恢复。
@@ -864,9 +702,9 @@ void main() {
         await tester.tap(find.text('Cancel'));
         await tester.pumpAndSettle();
 
-        // 取消后状态回 Idle，进度视图消失；本地转录入口保持隐藏。
+        // 取消后状态回 Idle，进度视图消失；本地转录入口恢复显示。
         expect(find.textContaining('Keep the app open'), findsNothing);
-        expect(find.text('On-Device Transcription'), findsNothing);
+        expect(find.text('On-Device Transcription'), findsOneWidget);
       });
     });
 
@@ -892,7 +730,7 @@ void main() {
         expect(find.text('Download Podcast Subtitles'), findsNothing);
       });
 
-      testWidgets('有字幕地址：默认选中 AI 转录，播客字幕需用户主动选择', (tester) async {
+      testWidgets('有字幕地址：默认选中本地转录，播客字幕需用户主动选择', (tester) async {
         final item = podcastItem(hasTranscript: false);
         await tester.pumpWidget(buildSheet(item));
         await tester.pumpAndSettle();
@@ -901,7 +739,7 @@ void main() {
 
         expect(find.text('Download Podcast Subtitles'), findsOneWidget);
         expect(_isOptionSelected('Download Podcast Subtitles'), isFalse);
-        expect(_isOptionSelected('Cloud Transcription'), isTrue);
+        expect(_isOptionSelected('On-Device Transcription'), isTrue);
       });
 
       testWidgets('选择播客字幕后下载入库，成功后关闭弹窗', (tester) async {

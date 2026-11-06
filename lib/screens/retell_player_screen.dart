@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../database/enums.dart';
 import '../models/practice_completion_result.dart';
 import '../features/auth/sign_in_required_dialog.dart';
@@ -1773,7 +1774,8 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
                     ratingPreviewControllerFactory: () =>
                         ref.read(retellRecordingPreviewProvider),
                     thresholds: RatingThresholds.retell,
-                    showAiReviewButton: true,
+                    // 纯端侧模式未接入复述 AI 评估，隐藏入口。
+                    showAiReviewButton: false,
                     isAiReviewLoading:
                         reviewPhase == RetellReviewEvaluationPhase.loading ||
                         reviewPhase == RetellReviewEvaluationPhase.streaming,

@@ -6,6 +6,7 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../config/regional_service_endpoints.dart';
 import '../remote_config/remote_config.dart';
 import '../remote_config/remote_config_dependencies.dart';
 import '../../services/app_logger.dart';
@@ -40,7 +41,7 @@ final userRegionBootstrapperProvider = Provider<UserRegionBootstrapper>((ref) {
   );
 });
 
-/// 冷启动先展示 Flutter 首帧，再串行探测地区地址并固定本进程路由。
+/// 纯端侧启动地区判定：系统 Region + 本地开发者覆盖，不探测远端配置。
 final userRegionBootstrapProvider = FutureProvider<UserRegionBootstrapResult>((
   ref,
 ) async {
@@ -49,39 +50,29 @@ final userRegionBootstrapProvider = FutureProvider<UserRegionBootstrapResult>((
   await WidgetsBinding.instance.endOfFrame;
 
   final systemIsChinaUser = _readSystemRegionIsChina(readCountryCode);
-  router.updateFromUserRegion(isChinaUser: systemIsChinaUser);
-
-  var cachedConfig = RemoteConfig.defaults;
-  UserRegionBootstrapResult result;
-  try {
-    final remoteConfigService = ref.read(remoteConfigServiceProvider);
-    cachedConfig = remoteConfigService.loadInitialFromCache();
-    final override = await _readOverride(ref);
-    final bootstrapper = ref.read(userRegionBootstrapperProvider);
-    result = await bootstrapper.resolve(
-      systemIsChinaUser: systemIsChinaUser,
-      cachedConfig: cachedConfig,
-      forcedRegion: override.forcedRegion,
-    );
-  } catch (error, stackTrace) {
-    AppLogger.log('UserRegion', 'bootstrap failed: $error');
-    AppLogger.log('UserRegion', stackTrace.toString());
-    result = UserRegionBootstrapResult(
-      isChinaUser: systemIsChinaUser,
-      source: UserRegionDecisionSource.systemFallback,
-      remoteConfig: cachedConfig,
-    );
-  }
-  router.updateFromUserRegion(isChinaUser: result.isChinaUser);
+  final override = await _readOverride(ref);
+  final forcedRegion = override.forcedRegion;
+  final isChinaUser = switch (forcedRegion) {
+    ServiceEndpointRegion.china => true,
+    ServiceEndpointRegion.global => false,
+    null => systemIsChinaUser,
+  };
+  final source = forcedRegion == null
+      ? UserRegionDecisionSource.systemFallback
+      : UserRegionDecisionSource.developerOverride;
+  router.updateFromUserRegion(isChinaUser: isChinaUser);
   AppLogger.log(
     'UserRegion',
-    'startup route ready china=${result.isChinaUser} '
-        'source=${result.source.name}',
+    'startup route ready china=$isChinaUser source=${source.name}',
   );
-  return result;
+  return UserRegionBootstrapResult(
+    isChinaUser: isChinaUser,
+    source: source,
+    remoteConfig: RemoteConfig.defaults,
+  );
 });
 
-/// 已解析时使用 Config API 结论；解析期间或异常时暂用系统 Region 回退值。
+/// 已解析时使用本地启动判定结果；解析期间或异常时暂用系统 Region 回退值。
 final isChinaUserProvider = Provider<bool>((ref) {
   final result = ref.watch(userRegionBootstrapProvider).value;
   return result?.isChinaUser ??

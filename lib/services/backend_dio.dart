@@ -9,8 +9,8 @@
 ///
 /// **不得**用于外部主机请求（R2 presigned 上传、CDN 模型/资源下载、播客 RSS、
 /// App Store Lookup 等）——那些请求不应携带自家标识 header。此类请求继续裸构造 `Dio`，
-/// 或（如 [AppUpdateChecker] 那种同一 Dio 混打后端与外部主机的场景）改用 per-request
-/// [Options.headers] 只在打后端的那个请求上带 [clientInfoHeaders]。
+/// 若同一 Dio 混打后端与外部主机，改用 per-request [Options.headers] 只在打后端的
+/// 那个请求上带 [clientInfoHeaders]。
 library;
 
 import 'package:dio/dio.dart';

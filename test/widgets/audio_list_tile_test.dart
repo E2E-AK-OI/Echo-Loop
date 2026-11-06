@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,11 +17,9 @@ import 'package:echo_loop/features/audio_import/audio_import_models.dart';
 import 'package:echo_loop/features/audio_import/audio_import_provider.dart';
 import 'package:echo_loop/features/community_collections/download/download_progress.dart';
 import 'package:echo_loop/features/community_collections/download/community_download_notifier.dart';
-import 'package:echo_loop/features/auth/providers/auth_providers.dart';
 import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/widgets/audio_list_tile.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../helpers/mock_providers.dart';
 import '../helpers/test_app.dart';
@@ -85,23 +81,6 @@ class _CountingAudioImportController extends PodcastDownloadController {
     downloadCalls++;
     return false;
   }
-}
-
-Session _signedInSession() {
-  final user = User(
-    id: 'user-1',
-    appMetadata: const {'provider': 'email'},
-    userMetadata: const {},
-    aud: 'authenticated',
-    email: 'learner@example.com',
-    createdAt: '2026-06-12T00:00:00.000Z',
-  );
-  return Session(
-    accessToken: 'token',
-    tokenType: 'bearer',
-    user: user,
-    refreshToken: 'refresh',
-  );
 }
 
 void main() {
@@ -189,8 +168,7 @@ void main() {
 
     testWidgets('合集社区材料显示 CEFR 难度，窄屏长标题仍可布局', (tester) async {
       final item = createTestAudioItem(
-        name:
-            'A very long community lesson title that needs to fit on a narrow screen',
+        name: 'A very long community lesson title that needs to fit on a narrow screen',
       ).copyWith(remoteAudioId: 'remote-1', difficulty: 'B1');
 
       await tester.pumpWidget(
@@ -354,9 +332,8 @@ void main() {
     }
 
     testWidgets('社区已下载音频菜单含「删除下载」', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Official Audio',
-      ).copyWith(remoteAudioId: 'remote-1');
+      final item = createTestAudioItem(name: 'Official Audio')
+          .copyWith(remoteAudioId: 'remote-1');
 
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
@@ -369,9 +346,8 @@ void main() {
     });
 
     testWidgets('社区未下载音频菜单不含「删除下载」', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Official Audio',
-      ).copyWith(remoteAudioId: 'remote-1', audioPath: null);
+      final item = createTestAudioItem(name: 'Official Audio')
+          .copyWith(remoteAudioId: 'remote-1', audioPath: null);
 
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
@@ -418,9 +394,8 @@ void main() {
     });
 
     testWidgets('社区音频下载中菜单显示并支持取消下载', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Official Audio',
-      ).copyWith(audioPath: null, remoteAudioId: 'remote-1');
+      final item = createTestAudioItem(name: 'Official Audio')
+          .copyWith(audioPath: null, remoteAudioId: 'remote-1');
 
       await tester.pumpWidget(
         createTestApp(
@@ -451,9 +426,8 @@ void main() {
     });
 
     testWidgets('播客已下载单集菜单含「删除下载」', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Podcast Episode',
-      ).copyWith(podcastEpisodeGuid: 'guid-1');
+      final item = createTestAudioItem(name: 'Podcast Episode')
+          .copyWith(podcastEpisodeGuid: 'guid-1');
 
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
@@ -476,9 +450,8 @@ void main() {
     });
 
     testWidgets('点「删除下载」清空 audioPath', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Official Audio',
-      ).copyWith(remoteAudioId: 'remote-1');
+      final item = createTestAudioItem(name: 'Official Audio')
+          .copyWith(remoteAudioId: 'remote-1');
       final library = TestAudioLibrary(AudioLibraryState(audioItems: [item]));
 
       await tester.pumpWidget(
@@ -1002,51 +975,6 @@ void main() {
         find.byKey(const Key('audio_list_tile_downloading_icon')),
         findsNothing,
       );
-    });
-
-    testWidgets('菜单管理字幕 AI 转录音频过长时显示弹窗内错误提示', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Long Audio',
-        totalDuration: 31 * 60, // 超过 AI 转录 30 分钟上限
-      ).copyWith(transcriptSource: TranscriptSource.local);
-
-      await tester.pumpWidget(
-        createTestApp(
-          Center(
-            child: SizedBox(width: 420, child: AudioListTile(audioItem: item)),
-          ),
-          overrides: dedupeOverrides([
-            audioLibraryProvider.overrideWith(
-              () => TestAudioLibrary(AudioLibraryState(audioItems: [item])),
-            ),
-            supabaseSessionProvider.overrideWithValue(AsyncData<Session?>(_signedInSession())),
-            // 已登录用户视为已解锁（Pro），转录机制测试不被额度闸拦截。
-            subscriptionEntitlementOverride(),
-          ]),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('audio_list_tile_menu_hit_area')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Manage Subtitles'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Cloud Transcription'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.widgetWithText(FilledButton, 'Start Transcription'),
-      );
-      await tester.pump();
-
-      expect(find.textContaining('Audio too long'), findsOneWidget);
-      expect(find.byType(SnackBar), findsNothing);
-
-      await tester.pump(const Duration(seconds: 12));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Audio too long'), findsNothing);
     });
 
     testWidgets('单集信息展示简介、网页链接和音频下载链接', (tester) async {

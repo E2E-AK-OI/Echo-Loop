@@ -9,17 +9,13 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../services/app_logger.dart';
 
 import '../database/daos/sentence_ai_cache_dao.dart';
 import '../database/providers.dart';
 import '../features/subscription/models/premium_feature.dart';
 import '../features/subscription/models/ai_quota_rejection.dart';
-import '../features/subscription/providers/ai_trial_usage_provider.dart';
-import '../features/subscription/providers/ai_quota_limit_provider.dart';
-import '../features/subscription/providers/feature_access_provider.dart';
-import '../features/subscription/providers/subscription_controller.dart';
-import '../features/subscription/providers/subscription_identity.dart';
 import '../models/sense_group_result.dart';
 import '../models/sentence_ai_result.dart';
 import '../services/sentence_ai_api_client.dart';
@@ -330,11 +326,7 @@ class SentenceAiNotifier {
       }
     }
 
-    // L3: 流式 API 调用
-    if (accessToken == null || accessToken.isEmpty) {
-      AppLogger.log('SentenceAI', '翻译 L3 需要登录，未发现 Supabase access token');
-      throw const AiFeatureAuthRequiredException();
-    }
+    // L3: 流式 API 调用（纯端侧模式直接使用用户 BYOK 配置）
     await _beforeApiRequest?.call(
       PremiumFeature.aiTranslation,
       respectLocalQuotaReset: respectLocalQuotaReset,
@@ -359,7 +351,7 @@ class SentenceAiNotifier {
         previous: previous,
         next: next,
         targetLanguage: targetLanguage,
-        accessToken: accessToken,
+        accessToken: accessToken ?? '',
       ),
     );
     yield* pending.subscribe();
@@ -494,11 +486,7 @@ class SentenceAiNotifier {
       }
     }
 
-    // L3: 流式 API 调用
-    if (accessToken == null || accessToken.isEmpty) {
-      AppLogger.log('SentenceAI', '解析 L3 需要登录，未发现 Supabase access token');
-      throw const AiFeatureAuthRequiredException();
-    }
+    // L3: 流式 API 调用（纯端侧模式直接使用用户 BYOK 配置）
     await _beforeApiRequest?.call(
       PremiumFeature.aiAnalysis,
       respectLocalQuotaReset: respectLocalQuotaReset,
@@ -521,7 +509,7 @@ class SentenceAiNotifier {
         l2Type: l2Type,
         text: text,
         targetLanguage: targetLanguage,
-        accessToken: accessToken,
+        accessToken: accessToken ?? '',
       ),
     );
     yield* pending.subscribe();
@@ -655,11 +643,7 @@ class SentenceAiNotifier {
       }
     }
 
-    // L3: 流式 API 调用
-    if (accessToken == null || accessToken.isEmpty) {
-      AppLogger.log('SenseGroup', 'L3 需要登录，未发现 Supabase access token');
-      throw const AiFeatureAuthRequiredException();
-    }
+    // L3: 流式 API 调用（纯端侧模式直接使用用户 BYOK 配置）
     await _beforeApiRequest?.call(
       PremiumFeature.aiSenseGroup,
       respectLocalQuotaReset: respectLocalQuotaReset,
@@ -679,7 +663,7 @@ class SentenceAiNotifier {
         pending,
         hash: hash,
         text: text,
-        accessToken: accessToken,
+        accessToken: accessToken ?? '',
       ),
     );
     yield* pending.subscribe();
@@ -929,57 +913,11 @@ class SentenceAiNotifier {
 }
 
 /// SentenceAiNotifier Provider
+///
+/// 纯端侧模式没有账户与订阅额度，直接使用用户配置的 BYOK AI。
 final sentenceAiNotifierProvider = Provider<SentenceAiNotifier>((ref) {
-  ref.watch(aiQuotaLimitCleanupProvider);
   return SentenceAiNotifier(
     cacheDao: ref.watch(sentenceAiCacheDaoProvider),
     apiClient: ref.watch(sentenceAiApiClientProvider),
-    // 额度闸：已登录前提下未解锁（非会员且试用用尽）→ 抛配额超限。
-    guardFeature: (feature) {
-      if (!ref.read(featureAccessProvider(feature))) {
-        throw AiFeatureQuotaExceededException(feature: feature);
-      }
-    },
-    // 消耗一次免费试用；会员无限不计数。
-    onConsumeTrial: (feature) {
-      if (ref.read(subscriptionControllerProvider).isActive) return;
-      ref.read(aiTrialUsageProvider.notifier).consume(feature);
-    },
-    beforeApiRequest: (feature, {required respectLocalQuotaReset}) async {
-      final userId = ref.read(subscriptionIdentityProvider).userId;
-      if (userId == null) return;
-      final store = ref.read(aiQuotaLimitStoreProvider);
-      if (ref.read(subscriptionControllerProvider).isActive) {
-        await store.clearAllResets(userId);
-        return;
-      }
-      await store.clearExpiredResets(userId);
-      if (!respectLocalQuotaReset) return;
-      final rejection = store.activeRejection(userId, feature);
-      if (rejection != null) {
-        throw AiFeatureQuotaExceededException(
-          feature: feature,
-          resetAt: rejection.resetAt,
-          reason: rejection.reason,
-        );
-      }
-    },
-    onQuotaExceeded: (feature, rejection) async {
-      final userId = ref.read(subscriptionIdentityProvider).userId;
-      final resetAt = rejection.resetAt;
-      if (userId == null || resetAt == null) return;
-      await ref
-          .read(aiQuotaLimitStoreProvider)
-          .recordResetAt(userId, feature, resetAt, reason: rejection.reason);
-    },
-    // E7：后端 402 与本地 premium 分歧时回源对账（handler 内部判 isActive）。
-    onBackendQuotaRejected: (feature) => ref.read(
-      entitlementQuotaDivergenceHandlerProvider,
-    )('sentenceAi:${feature.name}'),
-    onApiSucceeded: (feature) async {
-      final userId = ref.read(subscriptionIdentityProvider).userId;
-      if (userId == null) return;
-      await ref.read(aiQuotaLimitStoreProvider).clearReset(userId, feature);
-    },
   );
 });

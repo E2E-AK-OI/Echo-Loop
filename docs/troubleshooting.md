@@ -49,6 +49,11 @@
 - 7.37 同一资源多入口下载：查找再登记导致重复任务，取消需绑定具体任务
 - 7.38 Riverpod 3 暂停无监听 StreamProvider：启动会话永久挂起，登录后仍提示未登录
 - 7.41 百度网盘批量导入：下载时才取 dlink，切后台后队列无法接力下一个文件
+- 7.42 阿里云 Qwen-Audio 实时 ASR：finish-task 必须带 streaming=duplex，心跳包需过滤
+- 7.43 Widget 测试：tester.enterText 后不 pump，按钮仍处于旧的可点击状态
+- 7.44 纯端侧改造：删除登录/订阅后，旧测试要按功能边界删除而不是伪造登录态
+- 7.45 Android APK 构建：Gradle 9 不兼容，Gradle 8 需显式禁用 IPv6 与启用 TLSv1.2
+- 7.46 retell_recording_controller_test 整文件顺序敏感：前序用例残留状态会让第 6 项 did not complete
 
 ---
 
@@ -301,337 +306,29 @@
 > **已被 §7.24 取代（2026-06-30）**：不再「macOS 放弃合成 → 降级 speakLive 不缓存」，改为自家原生通道 `MacosTtsSynthHandler` 合成（正确设 voice → macOS 也缓存且口音正确）。本节保留为根因记录。
 
 - **现象**：macOS 上切换英音(en-GB)/美音(en-US)，发音听起来没区别；iOS/Android 正常
-- **根因**：统一 TTS 管线走「合成到文件→缓存→播放文件」（`synthesize`→`synthesizeToFile`）。对比 `flutter_tts-4.2.5` 两端插件源码——iOS `SwiftFlutterTtsPlugin.swift` 的 `synthesizeToFile` 合成前正确设 `utterance.voice = self.voice ?? AVSpeechSynthesisVoice(language: self.language)`；**macOS `FlutterTtsPlugin.swift` 的 `synthesizeToFile`（line 148-195）从不给 utterance 设 voice**（连 `self.voice` 都不读，只有 `speak` 设了），产物永远是系统默认音色 → 不管 `setLanguage('en-GB')` 还是 `'en-US'` 都同一个嗓音。cacheKey 因 voiceId 不同会建两条缓存，但音频内容相同。en-GB 音色其实已装（`say -v '?'` 可见 Daniel/Eddy(UK)），不是缺音色
-- **关键约束**：macOS `synthesizeToFile` 连 `self.voice` 也不读，所以即便 `setVoice` 指定具体音色也无效——这条路在 macOS 上无解；唯有 `speak()`（实时朗读）会用 `AVSpeechSynthesisVoice(language:)`，口音才生效
-- **解法**：`PlatformTtsEngine.synthesize` 在 macOS（`_accentAwareSynth()=false`）直接返回 null → 协调器降级 `speakLive`（走 `speak`，按 `setLanguage` 选 en-GB/en-US 音色）。代价：macOS 不缓存音频（非性能敏感平台，可接受）；iOS/Android 的 synthesizeToFile 正确设 voice，照常走缓存合成路径
-- **规则**：依赖 flutter_tts `synthesizeToFile` 反映音色/口音前，须确认目标平台插件确实给 utterance 设了 voice——macOS 端漏设，是与 §7.5 isFullPath 同类的 macOS 平台遗漏。判断「平台是否支持口音合成」用注入式 `AccentAwareSynthResolver`（默认 `!Platform.isMacOS`），不在业务逻辑里硬判平台
-- **相关代码**：`lib/services/tts/platform_tts_engine.dart`（`_accentAwareSynth` + `synthesize` 提前返回 null）；参照 `flutter_tts-4.2.5/macos/Classes/FlutterTtsPlugin.swift:148`（无 voice）vs `ios/Classes/SwiftFlutterTtsPlugin.swift:173`（有 voice）
-- **修复时间**：2026-06-29
 
-### 7.20 Echo Loop TTS（Kokoro / sherpa-onnx）接入要点（设计约束，详见 PLAN.md ADR-9）
+### 7.44 纯端侧改造：删除登录/订阅后，旧测试要按功能边界删除而不是伪造登录态
 
-- **模型必须取自 sherpa 官方打包，不能用裸 Kokoro onnx**：`sherpa_onnx` 的 `OfflineTts` 只能加载 sherpa 格式的 Kokoro（自带 `espeak-ng-data` 做 G2P）。thewh1teagle/kokoro-onnx 仓库的裸 onnx 用另一套音素化（misaki/phonemizer），**塞不进 sherpa FFI**。模型源 = k2-fsa/sherpa-onnx 的 TTS 发布，量化 int8 后重托管到 `cdn.echo-loop.top/model/tts/`，App 只从自家 CDN 下载（与 Whisper 一致）
-- **`extractFileToDisk` 按扩展名识别格式**：`archive` 包的 `extractFileToDisk(inputPath, outputPath)` 用文件扩展名（最多 2 段，如 `.tar.gz`）判断解压方式。下载的临时归档**文件名必须以 `.tar.gz` 结尾**（本项目用 `_dl_<id>.tar.gz`），否则抛 `No file extension detected`。流式解包（`InputFileStream`）省内存，勿用 `readAsBytes` 全量读 98MB
-- **`OfflineTts` 的 FFI 指针只能在创建它的 isolate 内用**：`generate`/`writeWave`/`free` 必须与 `OfflineTts(...)` 同 isolate。故 worker isolate 内建引擎、循环处理合成请求、回传 wav 路径（`GeneratedAudio.samples` 是 Dart `Float32List`，跨 isolate 可传，但本项目直接在 worker 内 `writeWave` 写盘更简单）。镜像 `sherpa_onnx_engine.dart` 的 `_AsrWorker` 结构
-- **固定 `provider='cpu'`**：满足"一直 CPU、可靠"，规避 §7.4 的 NNAPI 崩溃路径；TTS 不用 VAD，不涉 §7.4 的 Silero VAD 崩溃
-- **解包目录布局不写死**：归档解包后关键文件可能在根或子目录，用"递归定位 `model.int8.onnx`/`voices.bin`/`tokens.txt`/`espeak-ng-data`"判断就绪与解析路径（`KokoroModelManager._resolvePaths`），不假设层级
-- **`speakLive` 返回 false 而非抛异常**：Kokoro 始终产文件，无实时兜底。合成失败时返回 null（synthesize）/ false（speakLive），让 ADR-8 共享协调器优雅静默，不在共享管线里抛
-- **相关代码**：`lib/services/tts/kokoro_model_manager.dart`、`kokoro_synthesizer.dart`、`kokoro_tts_engine.dart`、`kokoro_voices.dart`、`lib/providers/tts/kokoro_model_provider.dart`、`tts_controller_provider.dart`（`effectiveTtsEngine` 门控）；集成测试 `integration_test/kokoro_tts_test.dart`
-- **修复时间**：2026-06-29
+- 现象：把登录页、订阅页和 paywall 路由删除后，多个旧 Widget 测试仍 import 已删除的 auth / subscription 文件，或继续构造 `signedInSession()`、订阅状态覆盖，导致编译失败。
+- 根因：这些测试验证的是「登录后才能用」「订阅后才解锁」的旧产品行为；功能边界已删除后，继续补假登录态只是在维护一个不存在的门禁，测试与实现会一起漂移。
+- 解法：按功能归属裁剪测试：登录/账号/订阅/paywall 的专用测试整文件删除；共享页面测试只删除依赖登录态的用例与 import，保留与其它功能共用的 helper；仍被页面引用的 provider（如 subscriptionAvailability）保留其 override，避免误删导致构建失败。
+- 规则：删除产品或架构边界时，先按「这个测试在验证哪条业务规则」分类；规则已下线的测试直接删除，不要用假状态让旧断言继续通过。
+- 相关代码：`test/screens/settings_screen_test.dart`、`test/widgets/import_audio_sheet_test.dart`、`test/screens/learning_plan_screen_test.dart`、`test/widgets/audio_list_tile_test.dart`。
+- 修复时间：2026-11-05。
 
-### 7.21 Kokoro 归档若用 macOS tar 打包，PAX 扩展头令 archive 解压抛 FormatException
+### 7.45 Android APK 构建：Gradle 9 不兼容，Gradle 8 需显式禁用 IPv6 与启用 TLSv1.2
 
-- **现象**：设置页选 Echo Loop TTS 触发下载，进度走完后报 `FormatException: Missing extension byte (at offset 98)`，点「重试」无效
-- **排查方法论**：错误文案是 provider 兜底 `catch` 的 `'$e'`（非 `DioException`），先排除网络。逐段验证下载链路——`curl -I` CDN 返回 200 + 完整 ~98MB；`shasum` 与 `kokoroArchiveSha256` 一致 → 下载/SHA 全对，问题在解包。用项目 `archive` 包跑 `extractFileToDisk` 拿到栈:`TarDecoder.decodeStream:58` 的 `utf8.decode`
-- **根因**：归档在 **macOS 用 `tar`/`bsdtar` 重新打包**，混入 AppleDouble(`._*`) 与 **PAX 扩展属性头**（`com.apple.*` xattr，值为二进制；本例 792 条）。`archive` 包 `tar_decoder.dart:58` 对 PAX `x`/`g` 头做**无 try/catch 的 `utf8.decode`**，碰非 UTF-8 字节即抛 `FormatException`，从 `extractFileToDisk` 冒泡到 provider。CDN/下载/SHA 全部正常
-- **不能用 bz2 绕过**：sherpa-onnx 原始 `kokoro-int8-en-v0_19.tar.bz2`（Linux CI 打包）虽干净无 PAX，但 `archive` 包的 **bzip2 是纯 Dart 解码（无原生）**，解 ~100MB 移动端过慢（本机原生 `bunzip2` 都 >2min）；gzip 走 `dart:io` 原生 zlib，快
-- **解法**：用 **gzip 重打且禁 macOS 元数据**——`COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf kokoro-en-v0_19-int8.tar.gz model.int8.onnx voices.bin tokens.txt LICENSE espeak-ng-data`；重传 CDN 覆盖 `model/tts/kokoro-en-v0_19-int8.tar.gz`；更新 `kokoroArchiveSha256` 常量。客户端解包逻辑/`.tar.gz` 后缀不变
-- **规则**：托管给客户端 `archive` 包解压的 tar.gz **不得含 macOS xattr/AppleDouble**（必在 Linux 打或加 `--no-xattrs --no-mac-metadata` + `COPYFILE_DISABLE=1`）；**不用 bz2**（纯 Dart 慢）。换归档必须同步改 SHA 常量，且**先传 CDN 再改常量/发版**，否则旧包对不上新 SHA
-- **相关代码**：`lib/services/tts/kokoro_model_manager.dart`（`kokoroArchiveSha256`）；参照 `archive-4.0.7/lib/src/codecs/tar_decoder.dart:58`（PAX `utf8.decode` 无防护）
-- **修复时间**：2026-06-29
+- 现象：使用系统 Gradle 9 构建时报 Plugin [id: 'org.gradle.kotlin.kotlin-dsl', version: '6.5.2'] was not found；联网构建又在 :umeng_common_sdk 的 jcenter() 处失败。换用 Gradle 8.14.3 后，:app_links:extractReleaseAnnotations 下载 lint 工件时报 The server may not support the client's requested TLS protocol versions: (TLSv1.2, TLSv1.3) ... Remote host terminated the handshake。
+- 根因：Gradle 9 已移除 jcenter 且不兼容项目的 Kotlin DSL 插件版本；Gradle 8 默认的 JVM 网络栈在本机对 dl.google.com / Maven Central 的 TLS 协商不稳定，而 curl 可正常下载同样的 jar，说明不是网络不可达。
+- 解法：使用项目 wrapper 对应的 Gradle 8.14.3，并设置 GRADLE_USER_HOME=/f/devtools/gradle-home、GRADLE_OPTS=-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2；先跑一次 :app_links:extractReleaseAnnotations 预热 lint 依赖，再执行 :app:assembleDevRelease。
+- 规则：不要用系统 Gradle 9 构建本项目；构建缓存目录独立，避免污染用户全局 Gradle 缓存；缺少 android/key.properties 时只能构建 dev flavor（debug 签名），prod release 必须补 release keystore。
+- 相关命令：/f/devtools/gradle/gradle-8.14.3/bin/gradle -p android :app:assembleDevRelease --max-workers=2 --no-daemon。
+- 修复时间：2026-11-05。
 
-### 7.22 TTS 音色试听/预热：音色经 config 显式传入 synthesize，统一 render 主干（设计约束）
+### 7.46 retell_recording_controller_test 整文件顺序敏感：前序用例残留状态会让第 6 项 did not complete
 
-- **背景**：Kokoro 首次合成有可感知延迟（CPU 推理 RTF≈3）。语音合成设置页落地业界标准「预生成 + 缓存命中即播」——进页面后台为全部 11 个音色预合成示范句入库，音色弹层点击即播（命中预热缓存秒播）。
-- **核心约束（防竞态）**：试听/预热要用**与当前选中不同**的音色合成，但全 App 共用单个 Kokoro 引擎 + 单 worker isolate（顺序 FIFO）。**音色必须经 `TtsEngine.synthesize(..., config:)` 显式传入**，在方法入口**同步**解析 sid（`KokoroTtsEngine` 用 `config ?? _config`）——**不可**靠 `applyConfig` 改引擎环境态再合成：`applyConfig`(async) 与 `synthesize` 之间有 await 间隙，并发的另一次试听/预热会改写 `_config`，导致音频被写到错误 sid（同 §7.1/7.2/7.6 「不依赖跨边界的可变态」）。平台引擎无具名音色，音色仍由 `applyConfig` 的 setLanguage/setVoice 设定，`config` 不消费（脆弱的 §7.19 macOS 路径零回归）。
-- **统一主干（避免打补丁）**：协调器只有一条渲染主干 `_render`（请求→缓存文件，cache-first 幂等，不碰播放器/代际）+ 一条播放主干 `_renderAndPlay`（抢占→渲染→播放→speakLive 降级）。`speak`/`speakWith`（试听）/`prewarm`（预热不播）全部委托主干，不新增与 `speak` 平行的重复逻辑。预热 fire-and-forget、命中缓存即跳过、按 `_prewarmToken` 取消在途旧批次。
-- **在途去重（`_inFlightRender`）**：`_render` 按 cacheKey 记「合成在途」Future——缓存未命中时若同 key 已在合成（如预热某音色时用户恰好点该音色），**复用同一 Future**，不重复入 worker 队列、不重复跑 native generate，第二方等同一份产物。完成（含失败）后 `finally` 移除。检查+登记是同步段（无 await 间隙），故并发不会双登记。这是「点正在生成的 item」不再二次合成的关键。
-- **缓存天然分桶**：缓存键含 `voiceId + modelTag(fp32/int8) + engine + speed + textHash`，故预热与试听用同句+同音色+同变体命中同一条目，无需新增缓存维度；切变体（modelTag 变）→ 新键 → 重新预热。
-- **测试注意**：`TtsEngine.synthesize` 加 `config` 后，mocktail 桩须补 `config: any(named: 'config')`（协调器恒传 config，非 null 实参不匹配缺省桩会返回 null 致崩）；`deriveKey` 桩须含 `modelTag: any(named: 'modelTag')`（非 null modelTag）。`ConsumerState.dispose` 内**不可用 ref**，取消预热须用 build 时缓存的 notifier 引用。
-- **相关代码**：`lib/services/tts/tts_coordinator.dart`（`_render`/`_renderAndPlay`/`speakWith`/`prewarm`）、`tts_engine.dart`/`kokoro_tts_engine.dart`/`platform_tts_engine.dart`（`synthesize` 的 `config`）、`lib/providers/tts/tts_controller_provider.dart`（`previewVoice`/`prewarmVoicePreviews`/`kTtsPreviewText`/`ttsVoicePreviewKey`）、`lib/screens/tts_settings_screen.dart`（`_VoicePreviewRow` + 进页预热）
-- **完成时间**：2026-06-30
-
-### 7.23 平台 TTS 口音试听：engine.stop() 打断在途 synthesizeToFile 致复用方挂起
-
-- **现象**：把 §7.22 的「试听+预热」扩到平台 TTS 口音（点美音/英音即朗读，进页预热两口音）后，点击「美音」无声。日志只到 `[TtsCoordinator] 合成在途复用 key=… voice=en-US` 后**戛然而止**（无「播放」、无「降级 speakLive」、无异常）——典型「awaited Future 永不 resolve」。
-- **根因**：进页预热把 en-US 合成登记为 `_inFlightRender` 在途 Future。用户点美音 → `previewAccent`→`speakWith`→`_renderAndPlay`。旧 `_renderAndPlay` 顺序是「`++gen` → `player.stop()` → **`engine.stop()`** → `_render`」。`engine.stop()`→平台引擎 `_tts.stop()` 在 `_render` 复用在途 Future **之前**就打断了那次正在跑的 `synthesizeToFile`——而 flutter_tts 的 `synthesizeToFile`(配 `awaitSynthCompletion(true)`)被 stop 打断后**完成回调可能永不到达**，其 Future 永久挂起 → 复用它的 `speakWith` 一起挂起。Kokoro 不复现：合成在 worker isolate 跑，`engine.stop()` 不影响它（同 §7.22 单 worker 串行，但 stop 动的是主 isolate 引擎态）。
-- **解法**（同 §7.6/7.18「不依赖音频库回调时序，确定性 await」）：`_renderAndPlay` 改为「`++gen` → `player.stop()`（只动播放器、不碰合成，可安全前置即时切断旧音频）→ **先 `_render`**（复用在途合成、**不打断**它）→ 仅当 `_inFlightRender.isEmpty` 时才 `engine.stop()` → 播放」。两点缺一不可：① 渲染先于 stop，本次依赖的在途合成不被杀；② `engine.stop()` 用 `_inFlightRender.isEmpty` 门控，避免误杀**其他**在途合成（如另一口音的预热）使其 Future 挂起、后续点该口音复用时再次卡死。抢占仍由 generation 守卫 +（降级分支）`speakLive` 自带的 stop 保证。
-- **平台引擎 config 修正**：平台 `synthesize` 旧版「不消费 config」、靠 `applyConfig` 环境态。试听非当前口音时产物口音错误却以目标口音 key 入缓存。改为 `config != null` 时入口 `applyConfig(config)`（按本次口音 `setLanguage`），使产物与缓存键一致。
-- **规则**：
-  - **平台引擎 `engine.stop()`（=`_tts.stop()`）绝不可在一段 `synthesizeToFile` 在途时调用**——会让其 Future 永久挂起。任何「抢占/打断」逻辑要么在合成完成后再 stop，要么用 `_inFlightRender.isEmpty` 门控跳过。
-  - 切断旧**播放**用 `player.stop()`（安全、即时）；切断旧**实时朗读**靠 `speakLive` 自带的 `await stop()`；二者都不该为抢占而盲目 `engine.stop()`。
-- **相关代码**：`lib/services/tts/tts_coordinator.dart`（`_renderAndPlay` 重排 + `_inFlightRender.isEmpty` 门控）、`platform_tts_engine.dart`（`synthesize` 应用传入 config）、`lib/providers/tts/tts_controller_provider.dart`（`previewAccent`/`prewarmAccentPreviews`/`ttsAccentPreviewKey`）、`lib/screens/tts_settings_screen.dart`（`_AccentPreviewRow`）
-- **修复时间**：2026-06-30
-
-### 7.24 macOS 平台 TTS 自实现 synthesizeToFile（原生通道）→ 三端合成行为一致
-
-- **背景**：§7.19 因 flutter_tts 4.2.5 的 macOS `synthesizeToFile` 漏设 voice，让 macOS「放弃合成 → 降级 speakLive」。代价是 **macOS 平台 TTS 永不入 `tts_cache`**（speakLive 不产文件），用户观察到「Apple 语音播完没缓存、tts_cache 里 engine 全是 echoLoop」。iOS/Android 的 synthesizeToFile 正确设 voice、照常缓存——三端行为不一致。
-- **解法（自实现 synthesizeToFile，仅补 macOS）**：新增原生 handler `macos/Runner/MacosTtsSynthHandler.swift`（通道 `top.echo-loop/tts_synth`，方法 `synthesizeToFile`），用 `AVSpeechSynthesizer.write` 自行合成，合成前**正确设 `utterance.voice = AVSpeechSynthesisVoice(language:)`**（flutter_tts 漏的就是这步），按 PCM buffer 写 caf 到调用方给的**绝对路径**。`PlatformTtsEngine` 在 macOS（`_useNativeMacosSynth()=true`）走该通道，iOS/Android 仍用 flutter_tts（本就正常，零改动）。结果：三端都「合成入缓存 + 口音正确」。
-- **要点 / 坑**：
-  - **末尾空 buffer = 合成结束**：`synth.write` 的 buffer 回调最后会以 `frameLength==0` 触发，据此判定完成（对齐 flutter_tts 自身实现）；完成时先 `output=nil` 关闭 `AVAudioFile`（flush 落盘）**再**回报结果，确保 Dart 读取时文件已写完。
-  - **`FlutterResult` 必须主线程调用**：write 回调在后台队列，完成回报用 `DispatchQueue.main.async`。
-  - **macOS 10.15+**：`AVSpeechSynthesizer.write` 需 10.15+，低版本返回 FlutterError（协调器降级 speakLive）。
-  - **新 Swift 文件要登记 pbxproj**：macOS Runner 用 Xcode 工程，新增 `.swift` 必须在 `Runner.xcodeproj/project.pbxproj` 补 4 处（PBXBuildFile / PBXFileReference / Runner group children / Sources build phase），否则不参与编译。镜像 `NotificationPermissionHandler.swift` 的条目即可（注意分配新的唯一 ID）。`MainFlutterWindow.swift` 里 `awakeFromNib` 实例化并强引用持有 handler（同其他 Mac*Handler）。
-  - **失败优雅降级**：原生返回 false / 产出为空 → `synthesize` 返回 null → 协调器降级 speakLive（macOS speak 仍按 `setLanguage` 选英/美音，口音不丢）。
-  - **音色注入式可测**：`PlatformTtsEngine` 把「是否走原生」与「原生合成函数」做成注入参数（`NativeMacosSynthResolver`/`NativeMacosSynthesize`），单测无需真机/真通道；§7.19 遗留的 `accentAwareSynth`/`useDocumentsWorkaround`/`documentsDirResolver` 及 Documents 中转修法一并删除（macOS 不再经 flutter_tts 合成，Documents 中转无意义）。
-- **相关代码**：`macos/Runner/MacosTtsSynthHandler.swift`（新）、`macos/Runner/MainFlutterWindow.swift`（注册）、`macos/Runner.xcodeproj/project.pbxproj`（登记）、`lib/services/tts/platform_tts_engine.dart`（`_useNativeMacosSynth`/`_nativeMacosSynth`/`_synthesizeViaNativeMacos`）；测试 `test/services/tts/platform_tts_engine_test.dart`（原生成功/失败/空产出）
-- **修复时间**：2026-06-30
-
-### 7.25 词典交互：非 modal 常驻面板 + 词组选区手柄（设计约束）
-
-- **背景**：旧词典是 `showModalBottomSheet`（遮蔽、抢焦点，查下一个词必须先关弹窗），且只支持点单个单词。按业界标准（每日英语听力/LingQ/Kindle：高频查词一致用非 modal 面板 + 选区扩展）重设计。
-- **架构**：
-  - **面板宿主** `DictionaryPanelHost`：包在各宿主页 Scaffold body 外的 **Stack 内嵌常驻面板**（非 showBottomSheet——有 LocalHistoryEntry/返回键纠缠；非 OverlayEntry——命令式生命周期易泄漏）。面板状态是**页面局部 state**（谁创建谁销毁，页面 pop 即销毁，autoDispose 查词 controller 随之释放）。面板开着时正文可继续点词，`show()` 原地切换内容不重开。
-  - **词组选择 = 选区手柄**：`SelectableSentenceText`（统一了标注卡 RichText+recognizer 与盲听 Wrap+GestureDetector 两套旧实现）。点词即查并出现左右手柄（词级吸附），拖动扩选、松手查词组。手柄用 `ImmediateMultiDragGestureRecognizer` 按下即赢得竞技场（Flutter 系统选择手柄同款），不与滚动/PageView/长按冲突 → **「长按复制整句」保留不动**。
-  - **几何**：RichText + `RenderParagraph.getPositionForOffset`（命中）/`getBoxesForSelection`（手柄定位，post-frame 计算）。选区清理经宿主 `activeOwnerOf`（InheritedWidget 依赖面）：面板关闭或别处点词即自动清。
-- **规则**：
-  - **返回键**：已有 PopScope 的宿主在 `_handleExit` **首行**加 `closeIfOpen()` guard，**禁止**宿主内再注册第二个 PopScope（同路由多 PopScope 触发顺序无保证）；无 PopScope 的页面用宿主 `handleBackButton: true`。
-  - **点面板外关闭 = 带词区域豁免的屏障**（2026-07-02 用户真机反馈后由「不做点空白关闭」改为此方案）：面板开着时正文上盖透明屏障（Stack 中位于正文之上、面板之下），点句子里的词/拖手柄经**豁免区域**放行（连续查词/扩选不受影响），点其它区域先关面板并**吸收该次点击**（不触发下层操作，如盲听偷看切换）。豁免判定由 `SelectableSentenceText` 挂载时向宿主 `registerTapThroughHitTest(全局坐标命中谓词)` 注册、卸载时注销；谓词 = 文本 bounds ∪ 两个手柄命中区（与 `_buildHandle` 共用 `_handleHitRect` 公式），**必须精确、不得外扩粗矩形**——初版用「组件 bounds 上下外扩 36dp」的 Rect getter，句子紧邻的下层交互被误放行（盲听点句子上方一条带子触发隐藏字幕、标注卡解析按钮被误点，2026-07-02 二次真机反馈修正）；屏障用自定义 `RenderProxyBox.hitTest`（豁免命中返回 false 穿透）+ `Listener.onPointerDown` 关面板（非手势竞技场，即时且无歧义吸收）。**不要**用 translucent Listener——事件会同时到达下层，正好触发用户不想要的主屏操作。
-  - **手柄悬垂越界命中**：手柄/竖线悬在文本 bounds 外（末行下方、行首左侧），普通 Stack 的 `hitTest` 在 `size.contains` 处提前剪裁导致悬垂部分不可拖——组件用 `_UnboundedHitStack`（重写 `hitTest` 跳过自身 size 剪裁、直接测子节点）。手柄视觉=iOS 系统选择手柄同款：选区边界竖线（行高）+ 圆点（与竖线端点相切；起始手柄圆点在竖线上端、结束手柄在下端），直径较系统略大（12dp）便于点按，命中区 36dp 以圆点为中心（2026-07-02 真机反馈由 Android 水滴改为 iOS 圆点）。
-  - **面板默认高度 3/5 屏**（2026-07-02 真机反馈两轮调整：2/3 偏高、1/2 偏低，3/5 折中）：可拉伸源（AI/网页）默认与本地源限高统一 3/5，上拉可放大到 95%。
-  - **会话粘滞源**：`DictionarySessionSource`（keepAlive）记录用户面板会话内手动选中的源；查词 controller（autoDispose family，切词即重建）初始源优先级 = 粘滞源 > 词组 AI 偏好 > 全局默认。面板 dispose 时清除（**须推迟到微任务**——dispose 处于树 finalize 流程，同步改 provider 触发 Riverpod 断言），下次打开恢复默认。
-  - **词组查询管线**：`normalizeWord` 已折叠内部空白；controller 对含空格 key 默认选 AI 源；AI 缓存 key（`normalizeForCache`）天然兼容词组。**V1 不带句子上下文**——带则缓存 key/family key 必须复合 sentenceHash，命中率崩塌且后端要改协议（`DictionaryLookupRequest.sentence` 已预留）。
-  - 新增可点词渲染场景一律复用 `SelectableSentenceText`，不要再造分词/recognizer。
-- **相关代码**：`lib/widgets/dictionary/dictionary_panel_host.dart`、`dictionary_panel.dart`、`lib/widgets/practice/selectable_sentence_text.dart`、`sentence_word_selection.dart`、`lib/providers/dictionary/lookup_controller.dart`（`_resolveInitialSourceId`）、`lib/utils/text_normalize.dart`；测试 `test/widgets/dictionary/dictionary_panel_test.dart` 等
-- **完成时间**：2026-07-02
-
-### 7.26 流式 AI 词典（NDJSON 部分对象快照）：设计约束与踩坑
-
-- **背景**：词典查词原为同步阻塞（`await` 完整 JSON → 一次性 shimmer→完整）。改为流式后端逐帧下发部分对象快照，首 token 延迟大幅下降、字段逐块渐显。拆成两个独立端点 `POST /api/v1/stream/lookup-word`（单词）与 `/lookup-phrase`（多词），各自持有 prompt+schema；**客户端按规范化后是否含空白路由**（`normalizeWord(word).contains(' ')`，规则同后端原 `resolveQueryType`）。旧 combined 同步端点 `/api/v2/ai/dictionary` 保留给老客户端。
-- **传输 = NDJSON**（`\n` 分隔，`application/x-ndjson`）。选它而非 SSE：Flutter 无原生 EventSource，NDJSON 用 `utf8.decoder`+`LineSplitter` 两个标准 transformer 即可，无需容错半截 JSON。**注：帧载荷已由「每帧完整累计快照」改为「字段级增量事件」，见 §7.27（本节其余设计不变）。**
-- **模型天然兼容部分帧**：`AiDictionaryEntry.fromJson` 已全防御性解析（缺字段回退空串/空列表，永不抛错），**无需 `fromPartialJson`**，每帧直接 `fromJson`。sealed 分派靠 `queryType`/`originalExpression`，故**服务端每帧注入 `queryType`**，客户端首帧即选对子类。视图各区块 `if (isNotEmpty)` 门控 → 部分帧自然逐块渐显。新增 `LookupStreaming` 态承载部分结果，完成转 `LookupLoaded`。
-- **取消即止损（刻意反转旧「后台单请求语义」）**：旧 `AiDictionarySource` 忽略 CancelToken、跑完落缓存。流式路径**尊重取消**——controller 取消 token → Dio 关流 → 后端 `request.signal` abort → `streamObject` abort → 中断 LLM 省 token；**未完整读完不落缓存**（部分结果丢弃）。仅流正常读完才写 L1+L2。
-- **缓存模拟流式的边界**：**服务端** L3/L4 命中按 key 顺序累计吐帧（首块 ~0.5s）；**客户端 L1/L2 本地命中直接整块即时返回**（0 延迟，不模拟）。
-- **踩坑**：
-  - **`Stream<Uint8List>.transform(utf8.decoder)` 运行时协变检查失败**（要求 `StreamTransformer<Uint8List,String>`，而 `utf8.decoder` 是 `<List<int>,String>`）。Dio 的 `ResponseBody.stream` 实为 `Stream<Uint8List>` → 必须先 `.cast<List<int>>()` 再 transform。见 `lib/services/ndjson_stream.dart`。
-  - **前置错误体在 stream 模式下是未解析的 `ResponseBody`**：`_streamDictionary` 用 `validateStatus: (_) => true`（Dio 不在非 2xx 提前抛），手动读小 JSON 错误体取 `code`，映射为 `DictionaryPhraseTooLongException`/`DictionaryAuthRequiredException`/带状态码的 `DioException`（402 沿用 controller 现有分支）。
-  - **流内错误无 HTTP 状态**（200 已发）：后端末帧发 `{"__error": ...}`，客户端识别 → `DictionaryStreamException` → controller 转 `LookupError`（可重试）。
-  - **服务端 `streamObject` 错误不从流里抛**，而经 `onError` 回调 + `object` Promise reject。glue 靠 `await object` 的 reject 判失败；且**入库回调 `onComplete` 只在完整对象成功后 await 执行**（写在完整帧之后、`controller.close()` 之前，保证「完成才写、取消不写」）。
-  - **`ApiLogInterceptor` 跳过 stream 响应体**（`responseType == ResponseType.stream` 时不 `_stringifyBody`，避免序列化/误触碰未消费的流）。
-- **相关代码**：客户端 `lib/services/ndjson_stream.dart`、`sentence_ai_api_client.dart`（`lookupWordStream`/`lookupPhraseStream`/`_streamDictionary`）、`dictionary/ai_dictionary_source.dart`（`lookupStream`）、`providers/dictionary/lookup_controller.dart`（`LookupStreaming` + AI 流式分支）、`widgets/dictionary/ai_dict_result_view.dart`、`services/api_log_interceptor.dart`；后端 `packages/ai/lib/stream-structured.ts`、`apps/app/app/api/v1/stream/{_shared,lookup-word,lookup-phrase}`、`apps/app/app/api/v2/ai/dictionary/_shared.ts`。测试：`test/services/ndjson_stream_test.dart`、`sentence_ai_api_client_test.dart`、`dictionary/ai_dictionary_source_test.dart`、`providers/dictionary/lookup_controller_test.dart`、`widgets/dictionary/ai_dict_result_view_test.dart`；`packages/ai/__tests__/stream-structured.test.ts`、`apps/app/__tests__/stream-lookup-{word,phrase}-route.test.ts`。
-- **待真机验证**：断连确实触发 Vercel `request.signal` abort（本机/CI 测不到）；gpt-5-mini 经 AI Gateway 的 `streamObject` 逐帧到达。
-- **完成时间**：2026-07-08
-
-### 7.27 流式 AI 词典：帧协议由「累计完整快照」改为「字段级增量」
-
-- **背景/动机**：§7.26 的 NDJSON 每帧下发**当前累计的完整对象快照**，后一帧包含前一帧全部内容 → 总传输量 O(n²)。真机日志（查 `what's`）显示最终对象 ~1862B，却分 20 帧、每帧把已发内容整份重发。加 500ms 节流 + 相邻字节去重只能压掉「字段没变时的重复帧」，压不掉「每帧重发已完成字段」这个根本浪费。
-- **新协议（NDJSON，每行一个 JSON object；只有一种数据操作：按路径设标量叶子）**：
-  - 元信息（首行）`{"q":"single_word"|"multi_word"}` → 客户端播种 `acc={"queryType":q}`，sealed 分派尽早确定。
-  - 叶子赋值 `{"p":["meanings",0,"definition"],"v":<scalar>}` → 每个**标量叶子（任意嵌套深度）**写完发一次，用路径寻址；数组由 int 路径段 + 客户端**自动扩容**隐式处理，无 append 操作。任何内容只发一次（O(n)）。
-  - 结束 `{"done":true}` → isFinal 帧、落缓存；错误 `{"__error":"unavailable"}` → `DictionaryStreamException`。
-  - 标量长文本**整段一次到位**（写完才发、不逐字流出）；数组/嵌套元素逐个渐显。空数组无叶子 → 不下发（`fromJson` 走默认空值，视图自然隐藏）。`thinking` 及其子路径永不下发。
-- **后端**（`apps/app/app/api/v1/stream/_shared.ts`）：核心是递归 `emitStableLeaves(node,path,complete,emittedSet,out)`——`complete=false` 表示「在正在书写的尾部边缘」，一路 hold 到最深尾部叶子稳定；依据「AI SDK 部分解析器只有在对象/元素 JSON 闭合后才出现下一个键/元素」，故非末位子节点必已内部写完。真流式保留 500ms 批量节流、`emittedSet` 跨 flush 保证只发一次、末尾把整个 `full` 当完整补发剩余叶子 + `done`；缓存命中路径按 KEY_ORDER 重排顶层键后一次性发全部叶子、按叶子文本量控速。`onComplete` 入库仍存**含 thinking** 的完整 entry，不变。
-- **客户端**（`lib/services/sentence_ai_api_client.dart`）：改造**收敛在 `_streamDictionaryFrames` 一处**——维护累积 `acc`，`{q}` 写 queryType、`{p,v}` 走 `_setPath`（按下一段类型自动建 List/Map、按需 null 扩容）、`{done}` 发 isFinal 帧；每个叶子事件后整体 `AiDictionaryEntry.fromJson(acc)` 再 yield 完整 `AiDictionaryStreamFrame`。**`AiDictionaryStreamFrame` 契约（entry+isFinal）不变** → `ai_dictionary_source.dart`（`last`=末帧完整 entry / `sawFinal` / 落缓存）、`lookup_controller.dart`、`ai_dict_result_view.dart`/`ai_multi_word_result_view.dart`、`dictionary_entry.dart` 模型**全部零改动**。`decodeNdjson` 也不变（仍逐行 yield Map）。
-- **规则**：流式结构化对象要「增量下发、不重发」时，用**按路径设叶子**的单操作协议 + 客户端 `_setPath` 自动建容器拼装，别用「每帧完整快照」（O(n²)）；发射端靠「尾部边缘 hold、非末位必闭合」的递归规则判定叶子是否稳定，不依赖 per-schema 元信息（运行时结构判断即可）。
-- **相关代码**：后端 `apps/app/app/api/v1/stream/_shared.ts`（`emitStableLeaves`/`buildNdjsonStreamResponse`/`buildRevealResponse`）；客户端 `lib/services/sentence_ai_api_client.dart`（`_streamDictionaryFrames`/`_setPath`）。测试：`apps/app/__tests__/stream-lookup-{word,phrase}-route.test.ts`（叶子拼装 `assemble` + `dropEmptyArrays`）、`test/services/sentence_ai_api_client_test.dart`（叶子增量 + 嵌套路径累积）。
-- **完成时间**：2026-07-09
-### 7.28 选区能力三层化：自有 selection model + 平台手柄画笔（取代 SelectableText）
-
-- **根因**：Flutter 两个官方选区机制都在**前台失焦时清空选区**（`material/selectable_text.dart`
-  `_handleFocusChanged`、`widgets/selectable_region.dart` `_handleFocusChanged`），
-  且 `SelectableText.didUpdateWidget` 在 `textSpan` 变化时重建 controller 让选区归零
-  （`_TextSpanEditingController._textSpan` 是 final）。而「选中文字 → 在页面内面板里
-  查词/切源/收藏 → 选区必须还在」与该契约直接冲突，只能靠反向投影补救（2026-07-29
-  一晚 7 个补丁的来源）。
-- **规则**：选区需跨交互存活 / 需自定义词边界 / 需自定义操作条时，用**自有 selection
-  model + 平台 `TextSelectionControls` 手柄画笔**（`SelectableRegion` 同款分层），
-  **不要**用 `SelectableText` 或 `SelectionArea`。分三层：L1 会话（唯一真相源，只存
-  字符区间 + 内容身份，不含焦点概念，`idle/selecting/active` 三态）、L2 呈现（平台
-  手柄、tight 高亮、操作条、放大镜）、L3 `SelectionBackend`（命中/词边界/几何/取文本，
-  单段与跨块的唯一差异点）。
-- **词边界单一来源**：点词一律用业务自己的分词，**不能**用 `selectWord()`/ICU 边界——
-  ICU 把 `co-op` 断成 `co`/`-`/`op`、`e.g.` 断成 `e`/`.`/`g`，会让高亮、查询与两个收藏
-  入口各存不同的词。
-- **操作条必须挂页面级宿主**：它会溢出内容的 render box，而**祖先按各自 box 剪裁命中
-  测试**，挂在内容自己的 Stack 里溢出部分点不动（跳过自身剪裁的 `UnboundedHitStack`
-  只解决自身那一层，够手柄用、不够操作条用）；挂根 Overlay 又会盖在页面内面板之上。
-  正确层序：`正文 → 关面板屏障 → 操作条 → 面板`，遮挡与可点性全由层序解决，不做几何
-  同步。锚点用全局坐标推送，由宿主换算（图层自身首次 build 时 `findRenderObject()`
-  仍为 null，不能就地换算）。操作条挂在 Scrollable 外，故正文滚出视口时要主动收起
-  （`rectsVisibleInViewport`）。
-- **不用 `SelectionOverlay`**：它把手柄挂到「最近包含 context 的 Overlay」，手柄会跑到
-  根 Overlay，遮挡与滚动跟随又得手算。手柄当普通 widget 放进内容 Stack 即可。
-- **平台行为对齐**：长按拖选在 Android/Fuchsia/Linux/Windows 按**词**粒度、iOS/macOS 按
-  字符（同框架 `selectWordsInRange` / `selectPositionAt`）；手柄拖拽所有平台都是字符级。
-  手柄命中区以平台 `getHandleAnchor`/`getHandleSize` 推导后放大到 36dp（框架自身用 48dp）。
-- **tight 高亮**：`Selectable` 协议内部硬编码 `boxHeightStyle: max`
-  （`rendering/paragraph.dart`），所以**只要不走该协议**（单段与跨块 backend 都自己
-  读段落几何）就能全程用 tight，两处观感一致。
-- **桌面交互必须自己补齐**（`SelectableText` 白送的，自有实现一样都不会有）：mouse
-  drag-select（限定 `PointerDeviceKind.mouse` 的 `PanGestureRecognizer`，且必须
-  `DragStartBehavior.down`——默认的 `.start` 报的是「拖动被识别时」的位置，选区起点
-  会偏移且触发识别的位移被并入 `onStart` 收不到 `onUpdate`）、**点击手抖兜底**（鼠标
-  slop 只有 1 逻辑像素 `kPrecisePointerHitSlop`，抖 2px 就让 pan 赢 tap 输，pan 结束
-  时未形成选区要按点击处理）、I-beam 光标、**双击选词 / Shift+点击扩选 / Shift+方向键
-  扩选 / Cmd+C**（2026-07-30 补齐）。尚未做：三击选段 / Cmd+A / 拖动已选文本。
-- **双击不能用 `DoubleTapGestureRecognizer`**：它会 hold 住手势竞技场，单击要等双击
-  超时（约 300ms）才生效，点词查词整体变迟钝。自己在 tap 里按「时间窗 + slop」判定
-  （`TapCadence`），单击零延迟。
-- **键盘扩选没有光标态**：本实现只有选区，没有 caret，所以无选区时 Shift+方向键不做
-  任何事；缩回固定端等于选区归零，按结束会话处理。上下行移动走**光标几何**
-  （`caretRectAt` + `offsetAt`），不假设行结构，跨块也能跨到相邻块。Cmd/Ctrl+C **保留**
-  选区（平台标准），与操作条里业务定义的「复制并结束会话」是两个动作。焦点只用于
-  键盘事件路由，且**只有鼠标交互才 requestFocus**（触屏 requestFocus 会收起软键盘）。
-- **长按落在词间空白**不能直接 return（会变成死手势）：把锚点定在该字符，拖出第一个
-  字符再建立会话。
-- **跨块 backend（AI 回答）不走 `SelectionContainer`/`Selectable`**：除了上面的 max
-  高亮与失焦清选区，官方注册表在流式 markdown 帧末增删子节点时还会重入
-  （`ConcurrentModificationError`，T16 修过）。改为直接读渲染树拼扁平字符空间。三个
-  非直觉点：①**文档顺序必须按占位符递归**——`gpt_markdown` 把整段渲染成一个根
-  `RichText`，块级元素（标题/列表/引用/表格）是 `WidgetSpan` 占位符，占位符里又是
-  新的 `RichText`，即**子块嵌在父段落内部**，按「渲染树遇到的先后」排会错乱；正确做法
-  是父段落文本被占位符切成多段、占位符处插入子块（`RenderParagraph` 的占位符子节点
-  顺序 == span 中出现顺序，下标即对应）。②命中判定要用**段自身文本的矩形**，不能用
-  段落 box——嵌套结构下父 box 覆盖子块，会命中外层。③相邻两段之间没有换行/空白时补
-  一个换行（表格相邻单元格），该换行占扁平偏移但不属于任何段。
-- **内容变化 / 卸载时通知宿主必须推迟一帧**：`didUpdateWidget`、`dispose` 里直接调
-  `onHideToolbar` / `onSessionEnded` 会 setState 到**祖先**宿主，触发
-  「markNeedsBuild called during build」；流式 AI 回答每帧都会走到这条路径。
-- **内容被整块摘掉时也要收操作条**（`dispose`，不只是 `didUpdateWidget`）：聊天
-  「新会话」清空消息会直接卸载 AI 回答，操作条否则孤零零留在空白页上。因此
-  「收操作条」的回调必须**携带 owner**、不依赖 `currentState` / `context`（卸载后
-  两者都失效），宿主 show/hide 也要加 `mounted` 守卫（延迟回调可能晚于宿主销毁）。
-- **操作条挂载点抽象为 `SelectionToolbarMount` + `SelectionToolbarScope`**：查词页由
-  `DictionaryPanelHost` 实现（层序 `正文 → 屏障 → 操作条 → 面板`），无面板的页面
-  （聊天载体 `ChatView`）用通用 `SelectionToolbarHost`；内容组件只认接口，不关心自己
-  被放进了哪种页面。
-- **已知代价**（明确接受）：不提供系统选区的无障碍语义；句子文本本身仍可被读屏朗读。依赖的 API 全部公开（`RenderParagraph` 几何、
-  `TextSelectionControls`、`TextMagnifier`、`DefaultSelectionStyle`），无私有状态依赖。
-- **相关代码**：`lib/widgets/selection/`——内核 `selectable_content`（L1+L2 组装、手势
-  语义）、`text_selection_session`（L1）、L2 `selection_presentation` /
-  `selection_gesture_detector` / `selection_extend` / `selection_keyboard` /
-  `platform_selection_handles` / `selection_highlight` / `selection_magnifier` /
-  `selection_toolbar(_layer/_host)` / `selection_geometry` / `unbounded_hit_stack`、
-  L3 `selection_backend` + `paragraph_selection_backend`（单段）+
-  `multi_paragraph_selection_backend`（跨块）、组装件 `app_selectable_text`（单段）；
-  `lib/widgets/practice/selectable_sentence_text.dart`（查词业务薄封装）、
-  `lib/features/chatbot/widgets/selectable_assistant_markdown.dart`（AI 回答薄封装）、
-  `lib/widgets/dictionary/dictionary_panel_host.dart`（操作条挂载 + `isPanelOpenOf`）。
-  测试：`test/widgets/selection/`（`text_selection_session_test` /
-  `selectable_content_desktop_test`）、`test/widgets/practice/selectable_sentence_text_test.dart`、
-  `test/features/chatbot/widgets/selectable_assistant_markdown_test.dart`。
-- **仍在用 `SelectableText` 的地方**（有意保留）：设置页/调试页/播客信息等纯只读文本，
-  没有「选区跨面板交互存活」「自定义词边界」「自定义操作条」的需求，用系统实现更省。
-- **完成时间**：2026-07-30（三层化 + 桌面补齐 + AI 回答迁移）
-
-### 7.29 长期分支落地覆盖主干英文文案：`app_en.arb` 256 个 key 静默回退，且被后续测试"修复"坐实
-
-- **根因**：`video` 分支从 07-21 fork 后持续开发到 08-05 才落地，中途多次 `rebase onto`
-  main 同步；分支自身在 07-29 有一个提交整份重写了 `app_en.arb`（连带 codegen 全量生成的
-  `app_localizations_en.dart`/`app_localizations.dart`），其源头早于主干 07-28 那次英文文案
-  优化（`ece1a4da`）。因为 codegen 文件几乎每行都会变，line-based 三方合并/冲突判定在这种
-  「整份重写」提交上基本失去意义，`ece1a4da` 改的 256 处英文文案被整批带回旧值，08-05 落地
-  时无人逐行核对这么大的 diff。
-- **二次坐实**：落地后全量 `flutter test` 因文案不匹配报出大量断言失败，后续有提交把这些
-  断言"修"成匹配（已回退的、错误的）产出文案，而不是去查文案本身为什么变了——`TASKS.md`
-  2026-08-06 那条"过期断言清理"记录就是这次坐实，之后测试全绿反而掩盖了问题。
-- **规则**：i18n 模板文件（`app_en.arb`）+ 其 codegen 产物**不适合**长期分支持有自己的重写
-  提交去 rebase 合并；长期分支应尽量高频同步 main（而不是攒到落地前才一次性 rebase），且
-  涉及 codegen 全量生成文件的冲突，**必须**基于源文件（`.arb`）本身逐 key 核对，不能整份
-  接受任一侧。当 `flutter test` 因文案不匹配大批失败时，先确认是文案本身出问题还是测试
-  该更新，**不要**默认改测试断言让它变绿了事。
-- **另发现**：`step_complete_dialog.dart` 用本地化后的字符串 `l10n.firstStudy` 做业务分支
-  判断（决定"完成首轮"还是"完成复习"文案），这次因为 `firstStudy` 译文改成 `"First Round"`
-  后恰好撞上某个 widget test 拿 `'First Round'` 当泛型占位符 stageName，暴露了"业务逻辑不
-  应该拿翻译后的展示文本做判断依据"这个更根本的坏味道（`TASKS.md` 07-06 已记录，尚未改造，
-  当前只改了测试的占位符避免碰撞）。
-- **恢复方法**：三点对比法——取「回退前 (`ece1a4da^`)」「意图值 (`ece1a4da`)」「当前 HEAD」
-  三份 arb 逐 key diff，`HEAD == ece1a4da^ 且 ece1a4da 改过` 即判定为被静默回退，按 `ece1a4da`
-  的值恢复；同一方法可扩展到检测任意「长分支落地覆盖主干独立改动」的问题，不限于 l10n。
-- **完成时间**：2026-08-06
-
-### 7.30 跟读实时 VAD：固定 RMS 门槛把小声用户判成静音 → 说话中途被自动结束录音
-
-- 根因：Android `AndroidSpeechPracticeHandler` 与 iOS/macOS `AppDelegate.swift` 都用固定门槛 0.015（**增益前** RMS；写入 WAV 时才 ×2.2，离线 ASR 日志里的 rms² 是增益后的值，换算时别搞混）。Android 离线 ASR 录音中无实时转写，自动停止只靠声学静音兜底，判错即截断。
-- 规则：门槛按底噪自适应（`AdaptiveVadThreshold`，Kotlin + Swift 三端同源，改参数必须三端同步），**必须有上限（= 旧门槛）和下限**；底噪只统计判为静音的 buffer。排查时对比 `[RecordingDiag]` 的 `vadThreshold/vadNoiseFloor/vadVoicedBuffers` 与 `[ASREngine] VAD: x → y` 是否矛盾。
-- 相关：跟读引擎的 `referenceDuration`/`maxDuration` 必须按播放倍速换算（`RepeatFlowConfig.playbackSpeed`），否则慢速播放时动态兜底降到 1s。
-
-### 7.31 复述重听本段：清理录音置 idle 触发自动录音，抢在原文播放前启动 → 原音被录进去
-
-- 根因：`clearRecording` 先同步置 idle 再 await 原生清理；期间跑过一帧时，idle 触发的自动录音在播放器仍为 retelling 时启动，随后才切 listening 放原文（评估中点击最易触发，主线程被评估占用）。
-- 规则：所有「取消/清理录音后播放原文」的入口，清理期间都要先挡住自动录音（`_manualStoppedThisParagraph = true`），清理完、同步切到 listening 前再放开。回归测试见 `retell_player_screen_test.dart`「评估中点击主播放重听本段…」。
-
-### 7.32 media_kit 区间播放：软停止越过句尾带出下一句；seek 未落定就起播
-
-- 根因：句尾靠「位置事件/200ms 轮询发现 `position >= end` → 异步 pause」软停止。Android media_kit 用 `ao=opensles`，部分机型（华为 YAL-AL00 实测）输出缓冲深，`time-pos` 与实际出声有数百毫秒偏差：1.0.43 原包第一句（终点 2524ms）停在 2770ms，暂停后缓存位置又漂到 3100ms，正好覆盖下一句开头 "Would you"（2.74s 起）；末句则在 9045ms 提前收到 EOF。逐句精听在 1.0.42 已走 MediaEngine，回归点不是 1.0.43 的盲听驱动切换。
-- 规则：区间终点用 mpv 原生 `end` 属性在解码层硬裁切（`MediaPlayerBackend.setPlaybackEnd`），终点后的音频不进输出缓冲；修复后同机停在 2523ms / 9524ms。`end` 是全局选项：**seek 前、区间结束/取消、任何非区间播放（play/seek/playToEnd/pause/stop/detach）都要撤销**，换文件时 backend.open 自行撤销，否则自由播放会停在旧终点或 seek 越过旧终点立即 EOF。
-- 起播：seek 回执只代表命令被受理，要等位置流确认到达起点再 play（上限 500ms 兜底，不在命令队列里等）。精确 seek 可能落在目标前不到 1ms（2625 → 2624.9），起点判定要允许少量提前（50ms）。
-- 排查日志：`[MediaEngine Range] start-gate`（outcome/waitedMs）、`[MediaKitBackend] set playback end`、`return: position=`。
-
-### 7.33 共享合集 / 播客未下载材料进入学习计划页：入口判断分散 → 进入逐句精听报 `file unavailable`
-
-- 根因：共享合集与播客单集入库时只有占位行（`audioPath=null`，字幕为空）。学习 Tab 的推荐卡 / 任务卡 / 最近完成直接 `push` 计划页，只有资源库列表点击会先下载；「更新字幕」只写字幕不下载音频，计划页因此出现「有字幕、无音频」，精听 `loadMedia` 报 `file unavailable`。推荐逻辑（`selectStudyRecommendation`）也从未过滤下载状态。
-- 规则：**计划页是媒体就绪的唯一 owner**。入口只负责打开计划页，不做就绪判断，也不做下载。就绪状态由 `resolveMediaReadiness` 纯函数解析，列表行与计划页进度共用 `mediaDownloadSnapshotProvider`；未就绪时计划页只展示 `MediaPreparingView`，学习内容与 autoStart 在 `MediaReady` 之后才构建。
-- 下载器约束：同一下载通道一次只跑一个任务，另一材料请求时解析为 `MediaWaiting`，通道空闲后由计划页自动重试；`MediaFailed` 不自动重试，只由占位页的重试按钮触发，避免失败后循环下载。播客 RSS 字幕不随音频自动下载，仅在用户于字幕管理中主动选择「下载播客字幕」时获取（首次选择时弹出一次性提醒）；未下载单集没有字幕。
-- 排查日志：`[MediaEnsure]`（provision 结果 / 跳过原因）、`[CommunityDownload]`（start rejected / start / done / cancel）、`[PodcastTranscript]`（字幕附加）。
-
-### 7.34 系统语言非中英文（如 `fr_CN`）→ 后台下载全部失败：非界面路径直接把系统 locale 喂给 `AppLocalizations`
-
-- 根因：后台下载通知文案解析用 `appSettingsProvider.locale ?? PlatformDispatcher.instance.locale`，把原始系统语言直接传给 `AppLocalizations.delegate.load`。生成的 `lookupAppLocalizations` 只认 `en` / `zh`，其它语言抛 `FlutterError`，异常落在 `BackgroundFileDownloadService._initialize()` 内，插件整体初始化失败，任务从未入队（用户日志 25/25 失败，界面仍显示英文，故不易察觉）。
-- 规则：**任何非 Widget 上下文取文案 / 语言标识，一律经 `resolveUiLocale`**（`settings_provider.dart`，与界面 `MaterialApp` 同一规则：显式设置优先，否则 `matchUiLocale`，只会是 `en` / `zh_CN`）。不要直接读 `PlatformDispatcher` 或原始 `Locale` 去查 `AppLocalizations`。通知文案属于非关键路径：解析失败须回退英文（`_guardNotificationLabels`、`ReviewReminderService._currentTexts`），不能让它拖垮下载或调度。
-- 语言标识参与提醒快照去重（`locale|<tag>`），切换语言后即使提醒不变也会重新调度。
-- 回归测试：`download_provider_test.dart`（fr_CN 回退）、`background_file_download_service_test.dart`（解析抛异常仍可入队）、`review_reminder_service_test.dart`「本地化文案」组、`paddle_billing_repository_test.dart`（checkout locale 注入）、`settings_provider_test.dart`「resolveUiLocale」组。
-- 排查日志：`[BackgroundFileDownload] plugin initialization failed`，`cause=AppLocalizations.delegate failed to load unsupported locale "<locale>"`。
-
-### 7.35 Release 工作流失败：Flutter SDK 对 Gradle / AGP / Kotlin 有最低版本门槛，升级 Flutter 后构建直接中止
-
-- 根因：CI 的 Flutter 升到 3.47.9 后，`flutter-gradle-plugin` 校验项目的 Gradle ≥ 8.14、AGP ≥ 8.11.1、Kotlin ≥ 2.2.20，原配置（Gradle 8.12 / AGP 8.9.1 / Kotlin 2.1.0）全部不满足，`app/build.gradle.kts` 应用插件时即失败。三项门槛按顺序逐个暴露，需要一次性对齐。
-- 规则：升级 `FLUTTER_VERSION` 时，先在本地 `./gradlew help` 验证 Android 配置阶段，再打 tag；不要只看 Flutter 版本号。
-- 排查日志：`Your project's Gradle version (8.12.0) is lower than Flutter's minimum supported version`。
-
-### 7.36 iOS 上传 altool 日志残留瞬时 500 的 ERROR 行 → 误判失败（上传实际已成功）
-
-- 根因：App Store Connect 偶发 500 时 altool 内部重试并最终 `UPLOAD SUCCEEDED with no errors`，但日志里仍保留 `ERROR:` 行。工作流以「日志含 ERROR 即失败」判定，把已成功的上传标红。
-- 规则：判定上传成功以 `UPLOAD SUCCEEDED with no errors` 为准，不以 ERROR 关键字为准；该构建号已入库，重跑同一 commit 会因构建号重复失败，需要新 commit 打新 tag。
-- 同一次上传 Apple 还邮件提示 `ITMS-90683`：`file_picker` 等依赖引入相机 API，Info.plist 缺 `NSCameraUsageDescription` 即使应用不使用相机也会被拒，须补齐并同步 `en` / `zh-Hans` 的 InfoPlist.strings。
-
-### 7.37 同一资源多入口下载：「查找再登记」必然重复建任务，取消也要绑定到具体任务
-
-- 根因：资源下载按入口分别调用时，若先查「是否有活动任务」再异步提交，并发调用会各自新建任务，写同一临时文件。插件自带的 `transfers.getOrStart` 也是先查后 `await` 入队，同样不能当作互斥守卫；且它会返回已完成的旧 transfer，与「文件被删后可重新下载」冲突。
-- 解法：`ResourceDownloadRegistry`（进程内单例，`BackgroundFileDownloadService` 默认共用）以资源 key 同步登记（check 与 insert 之间没有 `await`）。取消中的任务不可加入，新任务通过 `predecessor` 等待旧任务结束后再提交原生任务。
-- 规则：
-  - 取消回调必须绑定到具体任务（`cancelEntry(download)`），不能按 key 取消。否则旧调用方的 `CancelToken` 迟到触发时会误取消之后的新任务。
-  - 登记表是唯一状态来源，Riverpod 只做镜像（`resourceDownloadsProvider`），不得持有第二份状态。
-  - 进程级清理（`reset(group)`）只能在本进程没有 owner 的任务上执行，且每个 `FileDownloader` 只执行一次；多个 runner 共用同一个插件单例。
-- 测试约定：
-  - Riverpod 3 的 `container.listen` 回调是异步派发的。断言前需要 `await Future<void>.delayed(Duration.zero)`，否则会看到旧值。
-  - 「取消后立即再提交」的断言，不能先 `await cancelResource(...)`，那会等旧任务结束，测不到取消中的分支。需要让测试替身的取消完成可手动控制。
-  - 测试里提前 `await` 取消会触发结果报错，断言要在触发取消前挂上（`expectLater` 先于触发）。
-- 相关代码：`lib/services/resource_download_registry.dart`、`lib/services/background_file_download_service.dart`（`downloadBatch` / `_execute` / `_subscribeProgress`）。
-- 修复时间：2026-11-03。
-
-### 7.38 Riverpod 3 暂停无监听 StreamProvider：启动会话永久挂起，登录后仍提示未登录
-
-- 现象：1.0.46 冷启动后，已登录用户在播客订阅页点「+」仍弹「请先登录」；去登录、登录成功后再点仍弹窗，反复数次；进入设置等页面或返回上一页再进来后恢复正常。
-- 根因：Riverpod 2 → 3（升级提交 `b880e422`，随 1.0.46 发布）起，没有任何监听者的 provider 会被暂停，StreamProvider 连带暂停底层订阅，事件只缓冲不投递。启动链路 `await ref.read(supabaseSessionProvider.future)` 发生在根级常驻监听安装之前，无 widget 监听时永久挂起，监听也装不上。会话长期停在 loading（`value == null`），`isAuthenticatedProvider` 为 `false`；登录成功的 `signedIn` 也被缓冲，直到某个页面 watch 会话才 flush。
-- 解法：`startSupabaseSessionTracking`（`auth_providers.dart`）把顺序固化为「先 `container.listen` 常驻监听，再等待 `.future`」，`main.dart` 启动时改用它；订阅由 `_EchoLoopAppState` 持有到退出。测试注入点 `supabaseAuthClientProvider` 替换 Supabase 客户端。
-- 规则：
-  - 在 Riverpod 3 中，`ref.read(streamProvider.future)` 只有在 provider 已有活跃监听者时才会完成。需要「等首值」时，先挂常驻监听（`container.listen` / `listenManual`，由 widget 或应用级 State 持有），再等待。
-  - 依赖 `provider.value` 做认证判断的代码，必须保证会话 provider 有常驻监听者，否则读到的是暂停前的旧值。仅在 provider 内部 `ref.listen` 不够：那个监听同样会随 provider 一起被暂停。
-  - 排查「登录了却仍未登录」时，先看日志里 `identity_sync_pending` 是否长时间不结束、`auth_state_changed` 是否晚于登录页 pop。
-- 测试约定：`auth_providers_test.dart` 中 `startSupabaseSessionTracking` 用例：先回放 `initialSession` 再启动接管，断言首值可在超时内到达；启动后无其它监听者时，登录 / 登出都能反映到 `isAuthenticatedProvider`。把顺序改回「先 await、后监听」会超时失败。
-- 相关代码：`lib/features/auth/providers/auth_providers.dart`（`startSupabaseSessionTracking`、`supabaseAuthClientProvider`）、`lib/main.dart`（`_startThirdPartyDependentTasks`）。
-- 修复时间：2026-11-03。
-
-### 7.39 跟读页录音中点播放，麦克风未释放：暂停续播分支漏掉 cancelRecording
-
-- 现象：跟读页先暂停原句（保存了续播位置），再点录音，录音中点播放键。播放正常从原位置续播，但系统状态栏麦克风指示仍亮，录音持续进行。
-- 根因：`ListenAndRepeatController.resumeOrReplayCurrentSentence` 在存在续播位置时调用 `RepeatFlowEngine.resumeCurrentSentence`，该方法只做 pauseAudio / 倒计时取消 / 回放停止，没有调用 `callbacks.cancelRecording()`。无续播位置时走 `replayCurrentSentence` → `_atomicReset` → `_stopActiveResources`，录音会被正确释放，所以只有「先暂停再录音再播放」才会复现。
-- 解法：`resumeCurrentSentence` 改为调用 `_stopActiveResources()`，与其它打断路径保持同一套释放顺序。
-- 规则：引擎内任何「打断当前句」的入口都必须走 `_stopActiveResources()`，不得手写一份资源释放列表，否则新增资源（如录音）时会漏掉。共用此引擎的难句补练跟读同样受益。
-- 测试约定：`repeat_flow_engine_test.dart` 中「录音中从暂停位置恢复播放会取消录音」。进入等待态时 `enterWaitingForUser` 本身也会触发一次 `cancelRecording`，断言前需先重置计数，只统计 resume 这一步。
-- 相关代码：`lib/providers/repeat_flow/repeat_flow_engine.dart`（`resumeCurrentSentence`、`_stopActiveResources`）。
-- 修复时间：2026-11-04。
-
-### 7.40 难句跟读 / 难句补练进入时出现切屏动画：空列表下的首次对齐被当成相邻切句
-
-- 现象：从学习计划进入难句跟读或难句补练，页面先横滑一段再停到断点句，而不是直接显示断点句。
-- 根因：`PracticeSentencePager` 在句子列表为空（`itemCount=0`、`currentIndex=0`）时完成了一次同步，`_synced` 被置为 true。随后会话到位（`itemCount` 0→4，`currentIndex` 0→1），`_syncPageIfReady` 把它当成相邻切句，走 320ms `animateToPage`。加载遮罩只淡出 180ms，两者重叠就看到切屏。断点句与第 0 句相差大于 1 的任务（如逐句精听断点在第 4 句）走 `jumpToPage`，瞬间完成，所以看不出来。
-- 解法：`didUpdateWidget` 检测到 `itemCount` 从 0 变为非 0 时，重置 `_synced` 并排一次对齐，使首次到位直接跳转。之后的相邻切句动画不变。
-- 规则：分页组件的「已同步」状态只能在有效数据下建立；空列表时的页面位置不是业务索引的对齐结果。改动此类同步逻辑时，要同时覆盖「空列表到位后索引不变」与「到位后相邻切句」两种情况。
-- 测试约定：`practice_sentence_pager_test.dart` 中三条用例分别覆盖首次到位直接对齐、已对齐后的相邻切句仍有动画、空列表到位（索引不变）后相邻切句仍有动画。
-- 相关代码：`lib/widgets/practice/practice_sentence_pager.dart`（`didUpdateWidget`、`_syncPageIfReady`）。
-- 修复时间：2026-11-04。
-
-### 7.41 百度网盘批量导入：下载时才取 dlink，切后台后队列无法接力下一个文件
-
-- 现象：批量导入时切到后台，当前文件下完后队列停住，回到前台才开始下一个。
-- 根因：每个文件轮到下载时才调用 `filemetas` 取 dlink，并在 Dart 侧用并发 2 排队。App 挂起后没有人取下一个 dlink，也没有人提交下一个任务。
-- 解法：入队时整批取一次 dlink（有效期约 8 小时，单次请求按 100 个分块），整批提交原生下载队列，同时下载数由原生 `holdingQueue`（`maxConcurrentDownloads = 2`）限制。取链接失败时整批标记失败，每个文件可单独重试。
-- 规则：
-  - 需要后台持续推进的请求，必须在前台一次性完成并交给原生队列，不能依赖 Dart 在每个任务开始时临时请求。
-  - 批量接口中某个文件缺少 dlink 只跳过该文件，不抛异常拖垮整批。
-  - 同批并发的任务不能在开始时快照资源库，库状态在注册时读取，否则先完成的兄弟任务不会被重复检测。
-- 测试约定：`baidu_netdisk_import_tasks_provider_test.dart` 用可控的假取链接函数覆盖「取链接期间取消」「取链接失败整批失败并可重试」「整批只取一次链接」。
-- 相关代码：`lib/features/baidu_netdisk/providers/baidu_netdisk_import_tasks_provider.dart`（`_submitBatch`）、`lib/features/baidu_netdisk/data/baidu_netdisk_api.dart`（`fetchDownloadLinks`）、`lib/features/baidu_netdisk/data/baidu_netdisk_import_service.dart`（`_linkFor`、`_fetchFreshLink`）。
-- 修复时间：2026-11-04。
+- 现象：整文件运行 `test/providers/retell_recording_controller_test.dart` 时前 5 项通过，第 6 项「RetellRecordingController 在停止录音后触发有效录音时长回调」停在 `partialTranscriptUpdated` 后不再前进，随后 6 项均报 did not complete；单独运行第 6 项或只运行 `--name 'RetellRecordingController'` 的用例全部通过。
+- 根因：第 5 项「后台取消尚未完成时的新录音等待旧启动收尾后再开始」结束时残留的录音/计时器状态污染下一项；该文件与 `lib/providers/retell_recording_controller_provider.dart` 均非本次纯端侧改动引入，具体清理时序仍待单独排查。
+- 规则：该文件的失败先按「整文件顺序敏感」与「单用例编译错误/真实断言失败」区分；不要把它归因于纯端侧 AI 或设置页改动，也不要在功能收尾时用假状态掩盖。
+- 相关文件：`test/providers/retell_recording_controller_test.dart`、`lib/providers/retell_recording_controller_provider.dart`。
+- 修复时间：待定（记录于 2026-11-05）。

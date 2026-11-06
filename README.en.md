@@ -15,7 +15,7 @@
 
   <p>
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
-    <img src="https://img.shields.io/badge/Platform-iOS%20%C2%B7%20Android%20%C2%B7%20macOS%20%C2%B7%20Windows-brightgreen.svg" alt="Platform" />
+    <img src="https://img.shields.io/badge/Platform-Android-brightgreen.svg" alt="Platform" />
     <a href="https://github.com/echo-loop/Echo-Loop/releases/latest"><img src="https://img.shields.io/github/v/release/echo-loop/Echo-Loop?label=release&color=orange" alt="Latest release" /></a>
     <a href="https://github.com/echo-loop/Echo-Loop/releases"><img src="https://img.shields.io/github/downloads/echo-loop/Echo-Loop/total?label=downloads" alt="Total release downloads" /></a>
     <a href="https://github.com/echo-loop/Echo-Loop/commits/main"><img src="https://img.shields.io/github/last-commit/echo-loop/Echo-Loop" alt="Last commit" /></a>
@@ -26,8 +26,7 @@
   </p>
 
   <p>
-    <a href="https://apps.apple.com/app/id6760324074"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="48" /></a>
-    <a href="https://play.google.com/store/apps/details?id=app.echoloop"><img src="assets/badges/google-play-en.png" alt="Get it on Google Play" height="48" /></a>
+    <a href="https://github.com/echo-loop/Echo-Loop/releases"><img src="https://img.shields.io/badge/Android-Download%20APK-3DDC84?logo=android&logoColor=white&style=for-the-badge" alt="Android APK" height="48" /></a>
   </p>
 </div>
 
@@ -61,11 +60,12 @@
 - 🧩 **Sense-group splitting for long sentences**: Long sentences are split by sense groups, breaking complex structures into digestible chunks.
 - ⭐ **Save hard sentences and review them on demand**: Hard sentences are auto-archived for focused shadowing and repeated practice — no more "marked and forgotten".
 - 📚 **Contextualized flashcard review**: Saved words and sense groups are reviewed alongside their original sentence context — memorize in context, not in isolation.
-- 💡 **AI translation, analysis, and vocabulary explanation**: Bilingual translation, sentence analysis, word usage and collocations — expand on demand without breaking your flow.
+- 💡 **AI translation, analysis, and vocabulary explanation (BYOK)**: Bilingual translation, sentence analysis, word usage and collocations with your own OpenAI-compatible provider key — expand on demand without breaking your flow.
 - 📍 **Resume where you left off**: Automatically records your stage and current sentence, so you can pick up instantly — even 5-minute fragments count.
 - 📊 **Learning statistics**: Tracks practice time, input/output ratio, and unique vocabulary — see exactly how much you've practiced and spoken.
 - 🎙️ **AI shadowing evaluation**: Automatically aligns ASR results with the original text, highlights matched words, and gives a shadowing rating.
-- 🎧 **Local audio import + AI subtitles**: Batch-import local audio, import existing subtitles, or auto-transcribe with AI.
+- 🗣️ **AI speaking practice (Android)**: Talk freely in English with an AI partner that replies in real time; supports DeepSeek, Alibaba Cloud Bailian, OpenAI, and custom OpenAI-compatible providers with your own API key, configurable model and temperature, plus Alibaba Cloud speech recognition and voices.
+- 🎧 **Local audio import + offline subtitles**: Batch-import local audio, import existing subtitles, or generate subtitles with the on-device model.
 
 ---
 
@@ -143,28 +143,11 @@ Each piece of material is split into 1 first-pass session + 7 spaced reviews. In
 
 ## 📥 Download & try it
 
-<table>
-  <tr>
-    <td valign="middle">
-      <p>
-        <a href="https://apps.apple.com/app/id6760324074"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="App Store" height="48" /></a>
-        &nbsp;
-        <a href="https://play.google.com/store/apps/details?id=app.echoloop"><img src="assets/badges/google-play-en.png" alt="Get it on Google Play" height="48" /></a>
-        &nbsp;
-        <a href="https://github.com/echo-loop/Echo-Loop/releases"><img src="https://img.shields.io/badge/Android-Download%20APK-3DDC84?logo=android&logoColor=white&style=for-the-badge" alt="Android APK" height="48" /></a>
-      </p>
-      <p><sub>Desktop: macOS in development · Windows planned · Web not planned</sub></p>
-    </td>
-    <td valign="middle" align="center" width="120">
-      <img src="assets/qr/app-store.png" alt="App Store QR code" width="110" /><br/>
-      <sub>Scan to download iOS</sub>
-    </td>
-    <td valign="middle" align="center" width="120">
-      <img src="assets/qr/google-play.png" alt="Google Play QR code" width="110" /><br/>
-      <sub>Scan to download Android</sub>
-    </td>
-  </tr>
-</table>
+This branch ships **Android APK only**. Download it from [GitHub Releases](https://github.com/echo-loop/Echo-Loop/releases). The upstream App Store and Google Play builds do not include this branch's on-device changes.
+
+- No account, sign-in, or subscription
+- Learning data stays on your device, with local backup and restore
+- AI features connect directly to your own OpenAI-compatible provider key
 
 ---
 
@@ -175,48 +158,43 @@ Each piece of material is split into 1 first-pass session + 7 spaced reviews. In
 
 All core features are free, with no usage caps and no item limits:
 
-- **Unlimited imports**: local files, links, Baidu Netdisk and podcast subscriptions
+- **Unlimited imports**: local files, direct audio links, and podcast sources you add yourself
 - **Unlimited favorites**: save as many hard sentences, words and sense groups as you like
 - **The full learning loop**: intensive listening, shadowing, blind listening and retelling, plus 7 rounds of spaced review with reminders
 - **Focused review of hard sentences + in-context flashcards**
 - **Shadowing evaluation**: runs on your device's built-in speech recognition, with no usage count
-- **Offline transcription**: download a model and generate subtitles on your device, no sign-in needed
+- **Offline transcription**: download a model and generate subtitles on your device, no account needed
 - **Offline dictionary, learning statistics, PDF note export, backup & restore**
 
-AI explanation features come with a free monthly quota, which covers everyday study for most people. Only heavy AI users need to upgrade to a membership in the app.
+Everything is free — no account, subscription, or usage quota. AI features use BYOK: add your own provider API key in Settings, and the provider bills you directly for what you use.
 
 </details>
 
 <details>
-<summary><strong>Which features use the AI quota?</strong></summary>
+<summary><strong>Which features need my own API key?</strong></summary>
 
-Only the AI explanation features: AI translation, sentence analysis, sense-group splitting, word analysis, the AI study assistant, retelling evaluation and cloud transcription. None of the free features listed above use the quota.
-
-</details>
-
-<details>
-<summary><strong>What happens when the free quota runs out?</strong></summary>
-
-You can keep studying as usual. AI features come back when the quota resets next month, or you can upgrade to a membership in the app if you don't want to wait.
+AI translation, sentence analysis, sense-group splitting, word analysis, the AI study assistant, and AI speaking practice need an OpenAI-compatible provider API key configured in Settings. All local features work without a connection or a key.
 
 </details>
 
 <details>
-<summary><strong>Why does an open-source project charge anything?</strong></summary>
+<summary><strong>Can I still use it without an API key?</strong></summary>
 
-The code is fully open source (AGPL-3.0). Every AI request costs us money paid to the model provider, and memberships cover that cost so the project can keep going.
+Yes. Intensive listening, shadowing, blind listening, retelling, saved-sentence review, on-device transcription, and backup all work normally. Add your key in Settings when you want AI explanations or AI speaking practice.
+
+</details>
+
+<details>
+<summary><strong>Why do I pay for AI usage in an open-source project?</strong></summary>
+
+The code is fully open source (AGPL-3.0). The app has no self-hosted backend and no membership markup: AI requests go directly from your device to the provider you choose, and the provider bills you for your actual usage.
 
 </details>
 
 <details>
 <summary><strong>Which platforms are supported?</strong></summary>
 
-Right now the focus is **iOS and Android**: get it from the App Store or Google Play, or download the Android APK from [Releases](https://github.com/echo-loop/Echo-Loop/releases). Native macOS and Windows versions are in development and will be released later.
-
-To use it on a computer today:
-
-- **Mac (Apple silicon)**: search for Echo Loop in the Mac App Store and install the iOS version directly
-- **Windows**: install Tencent's YingYongBao (应用宝) app store, then install the Echo Loop Android APK inside it
+This fork's on-device build is **Android only**. Download the APK from [Releases](https://github.com/echo-loop/Echo-Loop/releases). The upstream App Store and Google Play builds do not include this fork's on-device changes.
 
 </details>
 
@@ -233,7 +211,7 @@ Other apps mostly give you materials and tools and leave it to you to work out h
 - **Audio**: mp3, m4a, wav, aac, flac
 - **Video**: mp4, mov, m4v, mkv (you can hide the picture and practice with audio only)
 - **Subtitles**: srt, vtt, lrc; subtitle files with the same name as the audio are paired automatically. No subtitles? Generate them with AI transcription
-- **Sources**: local files, direct audio links, Baidu Netdisk, podcast subscriptions
+- **Sources**: local files, direct audio links, and podcast sources you add yourself
 
 Podcasts, TED talks, TV clips and textbook audio all work. For best results, pick content **you're interested in and that's slightly above your current level**.
 
@@ -256,7 +234,7 @@ After the first study session on a material, you'll understand it and be able to
 <details>
 <summary><strong>Can I use it offline?</strong></summary>
 
-Yes. The learning flow, reviews, favorites, shadowing evaluation and local transcription all work offline. Only cloud AI features need a connection.
+Yes. The learning flow, reviews, favorites, shadowing evaluation, on-device transcription, and backup all work offline. Only AI explanations, AI speaking practice, and online podcast sources need a connection.
 
 </details>
 
@@ -290,13 +268,13 @@ Practice English alongside other committed learners: share methods, give feedbac
 - [x] Saved hard sentences + focused review
 - [x] Contextualized flashcard review
 - [x] AI translation / sentence analysis
-- [x] iOS / macOS native ASR shadowing evaluation
+- [x] Android ASR shadowing evaluation
 - [x] Resume where you left off
 - [x] Learning statistics
 
 ### 🚧 2 · AI capabilities
 
-- [ ] AI speaking partner
+- [x] AI speaking practice (Android, BYOK)
 - [x] AI learning assistant (on-demand Q&A)
 - [x] AI word lookup
 - [ ] Personalized material recommendations
@@ -305,12 +283,12 @@ Practice English alongside other committed learners: share methods, give feedbac
 
 - [ ] Custom task flows
 - [ ] Streaks / learning badges
-- [ ] Official macOS / Windows desktop release
+- [x] Android APK build and device installation
 
-### 🔭 4 · Content ecosystem
+### ✅ 4 · Local content management
 
-- [ ] Official curated collections (by topic + difficulty)
-- [ ] User-shared collections / UGC learning materials
+- [x] Local audio and subtitle import
+- [x] Local backup and restore
 
 ---
 
@@ -348,29 +326,14 @@ Thanks to [Yang Yan](https://sfs.muc.edu.cn/info/1063/3729.htm) (School of Forei
 ```bash
 git clone git@github.com:echo-loop/Echo-Loop.git
 cd Echo-Loop
-cp .dev.env.template .dev.env   # fill in Supabase / Google settings
 flutter pub get
 dart run build_runner build
-flutter run -d <ios|android|macos> --dart-define-from-file=.dev.env
+flutter run -d android
 ```
 
-> Supabase, Google, and other compile-time settings live in `.dev.env` (debug) / `.prod.env`
-> (release) and are injected via `--dart-define-from-file`. Both files are gitignored.
-> The global API defaults to `https://www.echo-loop.top` and can be overridden at compile time
-> with `API_BASE_URL`. The model CDN addresses are configured in
-> `lib/config/regional_service_endpoints.dart`.
-> The China API defaults to `https://www.echo-loop.cn` and can be overridden with
-> `API_CHINA_BASE_URL`. Local builds can override them in `.prod.env`; GitHub Actions CI/Release
-> passes the corresponding GitHub Variables directly to the build commands.
-> release builds use one `isChinaUser` result: China Apple Storefront, device country, or
-> `/api/v1/client/config` `context.countryCode` set to `CN`/`CHN` selects China, so one package
-> contains both global and China API candidates and serves both regions. When there is no China
-> evidence, the first API request uses the global endpoint. When the region conclusion changes,
-> the app keeps its current API endpoint while a
-> config request probes the new preference. It tries the other region once on a network error or
-> 5xx. A successful probe activates the preferred region; alternate success keeps API requests on
-> the available endpoint for the session, and a later config refresh probes the preference again.
-> Model CDN routing always follows `isChinaUser`; source API defaults apply when no override is set.
+> This branch is on-device only: no Supabase / Google / Paddle compile-time settings and no
+> `.dev.env` are required. Offline model CDN addresses are still configured in
+> `lib/config/regional_service_endpoints.dart` and can be edited as needed.
 
 </details>
 
@@ -439,15 +402,7 @@ test/                  # Unit / widget tests
 **Run**
 
 ```bash
-flutter run -d ios            # iOS
-flutter run -d android        # Android
-flutter run -d macos          # macOS (in development, unreleased)
-flutter run -d chrome         # Web (debug only, no release plan)
-
-# iOS Simulator
-xcrun simctl list devices available
-xcrun simctl boot <DEVICE_UDID>
-open -a Simulator
+flutter run -d android        # Android (the only release target)
 ```
 
 **Test / quality checks**
@@ -455,7 +410,7 @@ open -a Simulator
 ```bash
 flutter analyze                          # Static analysis
 flutter test                             # All tests
-flutter test integration_test -d macos   # Integration tests
+flutter test integration_test -d android # Integration tests
 # Maestro UI smoke test (start a device and install the dev build first)
 MAESTRO_APP_ID=app.echoloop.dev scripts/test_maestro.sh
 # Android device: build, install the dev build, then run the Study tests
@@ -465,8 +420,7 @@ scripts/test_maestro_android.sh --device <adb-serial>
 dart format .                            # Format
 ```
 
-> Install the Maestro CLI with `curl -fsSL https://get.maestro.mobile.dev | bash`.
-> For the iOS dev build, use `MAESTRO_APP_ID=top.echo-loop.dev`; flows live in `maestro/`.
+> Install the Maestro CLI with `curl -fsSL https://get.maestro.mobile.dev | bash`; flows live in `maestro/`.
 
 **Code generation** (after modifying Riverpod providers)
 
@@ -477,24 +431,18 @@ dart run build_runner build
 **Build**
 
 ```bash
-# Supabase / Google compile-time variables are injected from an env file (.prod.env for release)
-flutter build macos --dart-define-from-file=.prod.env
-flutter build apk   --dart-define-from-file=.prod.env
-flutter build ios   --dart-define-from-file=.prod.env
+# Android is the only release target
+flutter build apk --release
 
 # Run on device
-flutter run --release -d <DEVICE_ID> --dart-define-from-file=.dev.env
+flutter run --release -d <DEVICE_ID>
 ```
-
-> The release scripts `scripts/run_simulator.sh` (reads `.dev.env`) and
-> `scripts/release_{android,ios,macos}.sh` (read `.prod.env`) already pass
-> `--dart-define-from-file` for you.
 
 **Requirements**
 
 - Flutter SDK 3.9.2+
-- iOS Simulator / Android emulator / physical devices
-- Desktop: macOS / Windows / Linux dev environment
+- Android SDK and JDK 17
+- Android emulator or physical device
 
 </details>
 

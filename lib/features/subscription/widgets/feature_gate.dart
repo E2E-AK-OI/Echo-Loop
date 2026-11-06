@@ -9,13 +9,9 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../l10n/app_localizations.dart';
-import '../../../router/app_router.dart';
 import '../models/premium_feature.dart';
 import '../providers/feature_access_provider.dart';
-import '../providers/subscription_availability.dart';
 
 /// 打开订阅计划介绍 / 购买页（功能撞墙、升级入口统一走这里）。
 ///
@@ -25,14 +21,7 @@ import '../providers/subscription_availability.dart';
 /// 当前平台未启用订阅时不导航，仅提示——兜底覆盖所有撞墙入口（转录/意群/词典），
 /// 避免未启用平台的用户被引到无法购买的 Paywall。
 Future<void> openPaywall(BuildContext context, WidgetRef ref) async {
-  if (!ref.read(subscriptionAvailabilityProvider)) {
-    final l10n = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.premiumUnavailableOnPlatform)));
-    return;
-  }
-  await context.push(AppRoutes.paywall);
+  // 纯端侧模式不提供订阅购买入口，功能门控已全部放行。
 }
 
 /// 根据 [feature] 是否解锁，在 [child] 与锁定占位间切换的门控组件。

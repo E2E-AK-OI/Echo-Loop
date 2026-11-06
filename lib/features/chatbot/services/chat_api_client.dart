@@ -1,25 +1,18 @@
-/// 通用聊天流式 API 客户端。
+/// 通用聊天流式客户端（纯端侧 BYOK 版）。
 ///
-/// 对齐 [SentenceAiApiClient] 写法：`ResponseType.stream` + `validateStatus:(_)=>true`
-/// 手动读错误体 + NDJSON 逐帧累积。真实实现 [ChatApiClient] 与 debug 假实现
-/// [FakeChatApiClient] 共用 [ChatApi] 抽象，provider 按 kChatbotUseFakeApi 切换。
+/// 不再访问自建后端；直接把聊天历史发给用户配置的 OpenAI 兼容接口。
+/// [ChatApi] 抽象保持不变，便于 [FakeChatApiClient] 与测试替换。
 library;
 
-import 'dart:convert';
+import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../../../services/ai_http_client_adapter.dart';
-import '../../../services/app_logger.dart';
-import '../../../services/backend_dio.dart';
-import '../../../services/runtime_endpoint_router.dart';
-import '../../../services/ndjson_stream.dart';
-import '../../../services/supabase_token_coordinator.dart';
+import '../../../services/byok_ai_service.dart';
 import '../models/chat_message.dart';
 import 'ndjson_text_stream.dart';
 
-/// 请求聊天但未登录 / token 失效（HTTP 401）。
+/// 请求聊天但未登录 / token 失效（保留类型以兼容旧 UI 分支）。
 class ChatAuthRequiredException implements Exception {
   const ChatAuthRequiredException();
 
@@ -28,14 +21,8 @@ class ChatAuthRequiredException implements Exception {
 }
 
 /// 聊天流式 API 抽象。
-///
-/// 真实实现 [ChatApiClient] 与 debug 假实现 FakeChatApiClient 共用，
-/// provider 按 kChatbotUseFakeApi 切换；测试直接 override provider。
 abstract interface class ChatApi {
   /// 发起一轮聊天，逐帧 yield 累计全文。
-  ///
-  /// [followUpInstruction]：追问引用的显式指令（本地化文案，按界面语言传入），
-  /// 用于把带引用的消息拼成 `指令 + <quote>…</quote> + 问题`。
   Stream<ChatTextFrame> streamChat({
     required String endpoint,
     required List<ChatMessage> history,
@@ -50,47 +37,17 @@ abstract interface class ChatApi {
   void dispose();
 }
 
-/// 通用聊天流式 API 客户端。
+/// 通用聊天客户端，使用用户配置的 BYOK 模型。
 class ChatApiClient implements ChatApi {
-  final Dio _dio;
-  final void Function(String message) _streamLogPrint;
+  final ByokAiService? _service;
 
-  /// [appVersion] 随请求以 `x-app-version` 上报（版本灰度预留），可为 null。
-  ChatApiClient({
-    required String baseUrl,
-    String? appVersion,
-    SupabaseTokenCoordinator? tokenCoordinator,
-    RuntimeEndpointRouter? endpointRouter,
-    bool http2Enabled = aiHttp2EnabledByDefault,
-    void Function(String message)? streamLogPrint,
-  }) : _dio = createAuthenticatedBackendDio(
-         tokenCoordinator: tokenCoordinator,
-         baseUrl: baseUrl,
-         endpointRouter: endpointRouter,
-         appVersion: appVersion,
-         connectTimeout: const Duration(seconds: 15),
-         receiveTimeout: const Duration(seconds: 30),
-         apiLogTag: 'CHAT-API',
-       ),
-       _streamLogPrint =
-           streamLogPrint ?? ((message) => AppLogger.log('CHAT-API', message)) {
-    configureAiHttpClientAdapter(
-      _dio,
-      baseUrl: baseUrl,
-      http2Enabled: http2Enabled,
-    );
-  }
+  ChatApiClient({required ByokAiService byokService}) : _service = byokService;
 
-  /// 测试用：注入 Dio。
+  /// 测试用：仅保留构造签名，不注入 BYOK 服务时无法发起真实请求。
   ChatApiClient.withDio(
-    this._dio, {
+    Dio dio, {
     void Function(String message)? streamLogPrint,
-  }) : _streamLogPrint =
-           streamLogPrint ?? ((message) => AppLogger.log('CHAT-API', message));
-
-  /// 请求公共 headers（仅测试用）。
-  @visibleForTesting
-  Map<String, dynamic> get defaultHeaders => _dio.options.headers;
+  }) : _service = null;
 
   @override
   Stream<ChatTextFrame> streamChat({
@@ -102,97 +59,49 @@ class ChatApiClient implements ChatApi {
     required String accessToken,
     CancelToken? cancelToken,
   }) async* {
-    final response = await _dio.post<ResponseBody>(
-      endpoint,
-      data: {
-        'messages': history
-            .map((m) => m.toWire(instruction: followUpInstruction))
-            .toList(),
-        if (context.isNotEmpty) 'context': context,
-        if (targetLanguage != null) 'targetLanguage': targetLanguage,
-      },
-      options: Options(
-        responseType: ResponseType.stream,
-        validateStatus: (_) => true,
-        headers: {'Authorization': 'Bearer $accessToken'},
-      ),
+    final service = _service;
+    if (service == null) {
+      throw const ByokAiException(ByokAiErrorKind.missingConfig, '聊天客户端未配置');
+    }
+
+    final messages = <Map<String, String>>[
+      {'role': 'system', 'content': _systemPrompt(context)},
+      ...history.map((message) {
+        final wire = message.toWire(instruction: followUpInstruction);
+        return <String, String>{
+          'role': (wire['role'] as String?) ?? 'user',
+          'content': (wire['content'] as String?) ?? '',
+        };
+      }),
+    ];
+
+    final buffer = StringBuffer();
+    await for (final delta in service.streamText(
+      messages: messages,
       cancelToken: cancelToken,
-    );
-
-    final body = response.data;
-    final status = response.statusCode ?? 0;
-    if (body == null) {
-      throw DioException(
-        requestOptions: response.requestOptions,
-        response: response,
-        type: DioExceptionType.badResponse,
-      );
+    )) {
+      buffer.write(delta);
+      yield ChatTextFrame(text: buffer.toString(), isFinal: false);
     }
-
-    if (status != 200) {
-      yield* _handleNon200(body, status, response);
-      return;
-    }
-
-    // 200：NDJSON 逐帧累积；日志走 decodeNdjson(onLine:) 旁路，不重复消费流。
-    final frames = accumulateNdjsonText(
-      decodeNdjson(
-        body.stream,
-        idleTimeout: aiHttpStreamIdleTimeout,
-        onLine: (line) => _streamLogPrint(
-          '  流式响应帧 ${response.requestOptions.uri}: ${_truncate(line)}',
-        ),
-      ),
-    );
-    yield* frames;
+    yield ChatTextFrame(text: buffer.toString(), isFinal: true);
   }
 
-  /// 非 200：手动读小 JSON 错误体并映射为对应异常。
-  ///
-  /// 401 → [ChatAuthRequiredException]；其余（含 402 quota）→ 带状态码的
-  /// [DioException]，由 controller 映射（402 → 额度态）。
-  Stream<ChatTextFrame> _handleNon200(
-    ResponseBody body,
-    int status,
-    Response<ResponseBody> response,
-  ) async* {
-    final errorMap = await _decodeErrorBody(body);
-    _streamLogPrint(
-      '流式请求失败 ${response.requestOptions.uri} status=$status '
-      'code=${errorMap?['code'] ?? '(空)'} error=${errorMap?['error'] ?? '(空)'}',
+  String _systemPrompt(Map<String, Object?> context) {
+    final sentence = context['sentence'];
+    final passage = context['passage'];
+    final buffer = StringBuffer(
+      '你是英语学习助手，正在帮助用户理解并练习英语句子。'
+      '请用简体中文简洁回答，必要时给出英文例句。',
     );
-    if (status == 401) {
-      throw const ChatAuthRequiredException();
+    if (sentence is String && sentence.trim().isNotEmpty) {
+      buffer.write('\n当前句子：${sentence.trim()}');
     }
-    throw DioException(
-      requestOptions: response.requestOptions,
-      response: Response(
-        requestOptions: response.requestOptions,
-        statusCode: status,
-        data: errorMap,
-      ),
-      type: DioExceptionType.badResponse,
-    );
-  }
-
-  /// 读取非 200 响应的错误体（小 JSON），解析为 Map；失败返回 null。
-  Future<Map<String, dynamic>?> _decodeErrorBody(ResponseBody body) async {
-    try {
-      final text = await utf8.decodeStream(body.stream);
-      final decoded = jsonDecode(text);
-      return decoded is Map<String, dynamic> ? decoded : null;
-    } catch (_) {
-      return null;
+    if (passage is String && passage.trim().isNotEmpty) {
+      buffer.write('\n上下文段落：${passage.trim()}');
     }
-  }
-
-  /// 单帧过长时截断，避免一条日志挤爆控制台。
-  String _truncate(String text) {
-    const maxLength = 2000;
-    if (text.length <= maxLength) return text;
-    return '${text.substring(0, maxLength)}…（已截断，共 ${text.length} 字符）';
+    return buffer.toString();
   }
 
   @override
-  void dispose() => _dio.close();
+  void dispose() {}
 }

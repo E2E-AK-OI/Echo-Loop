@@ -1,15 +1,16 @@
 # Echo Loop 项目规划
 
-> 最后更新：2026-09-21（本地数据启动失败降级到首页并保留日志入口）
-> 当前焦点：录音 + 识别功能；首要阻塞为 Android 离线 ASR 结束录音闪退
+> 最后更新：2026-11-05（纯端侧改造：移除账号、订阅与自建后台依赖，Android-only）
+> 当前焦点：纯端侧版本已完成回归与 Android APK 构建，待真机验收；历史遗留 Android 离线 ASR 结束录音闪退仍待定位
 
 ## 产品目标
 
 Echo Loop 是一个围绕“音频输入 + 句子级学习 + 间隔复习 + AI 辅助”的英语学习应用。核心目标：
 
 - 让用户围绕真实音频材料完成首次学习与后续复习。
-- 保持主学习闭环免费，AI 与订阅能力只增强体验，不阻断核心流程。
-- 优先保证播放器、学习流转、状态一致性和多平台稳定性。
+- 学习闭环与本地能力完全免费，不设账号、订阅、额度或自建后台。
+- AI 能力采用 BYOK（用户自填供应商 Key）客户端直连，学习数据与凭据只留在本机。
+- 优先保证播放器、学习流转与状态一致性；当前发布平台为 Android。
 
 ## 当前状态
 
@@ -18,16 +19,19 @@ Echo Loop 是一个围绕“音频输入 + 句子级学习 + 间隔复习 + AI �
 - 音频导入、字幕管理、字幕编辑、自由播放器。
 - 首次学习主流程：全文盲听、逐句精听、难句跟读、段落复述。
 - 收藏体系：句子、单词、意群、收藏复习。
-- 词典体系：本地词典、AI 词典、网页词典、多源切换、非 modal 面板。
-- AI 能力：翻译、句子解析、单词深度解析、转录。
-- PDF 导出：学习材料导出为可打印 PDF。
-- 订阅体系：平台/渠道识别、native RevenueCat、direct Paddle 后端结账、AI 配额后端裁决。
+- 词典体系：本地词典、网页词典、多源切换、非 modal 面板。
+- 本地能力：离线转录、学习统计、PDF 笔记导出、本地备份与恢复。
+- AI 能力（BYOK 直连）：翻译、句子解析、单词/意群解析、AI 学习助手、AI 口语自由练习。
+- 纯端侧架构：无账号与登录、无订阅与权益门禁、无自建后端 API，启动链路不依赖 Supabase / RevenueCat / Paddle。
+- 导入范围收敛：保留本地文件、音频直链与用户自行添加的播客源；社区合集、精选播客、百度网盘等自建服务入口已下线。
 
 当前主要风险：
 
 - Android 离线 ASR 在部分机型结束录音后触发 native 崩溃，仍未定位到最终 root cause。
-- 订阅链路主干已打通，但仍需要继续做渠道验证、回归和生产配置收尾。
-- 冷启动已将重型初始化移出首帧路径，并以 Riverpod `AsyncValue` 统一管理本地数据初始化状态；本地数据失败时不再阻断导航壳，首页提供重试与日志入口。仍需在受影响 iOS 真机上用启动日志核验迁移失败原因和首帧实际耗时。
+- BYOK 需要用户自行申请供应商 API Key，Key 仅存本机安全存储且不随换机迁移；额度与计费由供应商侧管理。
+- AI 解析依赖供应商模型遵循 JSON 输出约定，模型能力或返回格式变化可能导致单次解析失败。
+- 本地备份是唯一的数据保全方式，设备丢失或卸载后无法从云端恢复。
+- 社区合集、精选播客、百度网盘等入口下线后，旧页面与旧文案仍需持续回归，避免残留死链。
 
 ## 当前里程碑
 
@@ -52,28 +56,23 @@ Echo Loop 是一个围绕“音频输入 + 句子级学习 + 间隔复习 + AI �
 持续推进中：
 
 - 性能与稳定性优化。
-- 多平台体验对齐（iOS / Android / macOS）。
+- Android 单平台体验对齐（当前仅发布 Android）。
 - 播放、词典、PDF、字幕编辑等高频链路体验打磨。
-- CI / Release / 更新链路稳定性完善。
-- AI 对话助手（通用 chatbot 组件）：多轮对话式 AI 助手，一套可插拔组件接入不同位置（首接入点为句子讲解页；2026-07-23 起逐句精听 / 难句跟读 / 难句复习 / 收藏复习 4 个句子级任务页 AppBar 也接入，共享 `SentenceChatButton` 单一入口来源），复用现有 NDJSON 流式与 402 额度门链路。发布由 `kChatbotEnabled` + remote config 双开关控制。规格见 [docs/chatbot-implementation-plan.md](./docs/chatbot-implementation-plan.md)。
+- CI / Release / APK 构建与安装校验。
+- AI 对话助手（通用 chatbot 组件）：多轮对话式 AI 助手，一套可插拔组件接入不同位置（首接入点为句子讲解页；逐句精听 / 难句跟读 / 难句复习 / 收藏复习 4 个句子级任务页 AppBar 共享 `SentenceChatButton` 单一入口来源）。2026-11-05 起改为 BYOK 直连，移除登录、订阅与后端额度门。
+- 纯端侧改造（Android，2026-11-05）：移除账号/登录、订阅/权益、社区合集、精选播客、百度网盘与自建后端依赖；AI 讲解与 AI 口语改为 BYOK 直连；保留本地导入、本地学习、本地备份与 AI 口语。详见 [docs/on-device-architecture-plan.md](./docs/on-device-architecture-plan.md)。
+- AI 口语自由练习（Android）：BYOK 直连的开放式英语口语对话，支持 DeepSeek / 阿里云百炼 / OpenAI / 自定义 OpenAI 兼容供应商，Base URL、模型与温度可配；语音使用阿里云实时 ASR `qwen-audio-3.1-asr-flash-streaming` 与 TTS `qwen-audio-3.1-tts-plus`；已在学习页与设置页接入，2026-11-05 完成代码与测试（待 Android 真机手动验收）。规格见 [docs/ai-speaking-implementation-plan.md](./docs/ai-speaking-implementation-plan.md)。
 
-### 🚧 Milestone 5：支付订阅（Echo Loop Premium）
+### ⛔ Milestone 5：支付订阅（已下线）
 
-当前状态：
-
-- 已完成：客户端 RevenueCat 接入、订阅页、平台/渠道识别、direct Paddle Checkout 与 Customer Portal、AI 配额后端裁决、release 渠道注入、权益单一来源重构 P0（后端 `/api/entitlements` 唯一权威 + forceReconcile 成交收敛，见 [docs/subscription-single-source-plan.md](./docs/subscription-single-source-plan.md)）。
-- 待继续：真实生产环境验证（Paddle 会员在商店包手动回归，见 plan §11；P0+P1 需后端同步部署）、退款/撤销回退、多设备/换机验证、更多渠道回归。P1 智能刷新（E7/E6/E8）已全部完成（2026-07-23）；E9 Realtime 推送为可选项未实现。
-
-参考文档：
-
-- [订阅配置与发布说明](./docs/subscription-setup.md)
+2026-11-05 纯端侧改造已移除账号、订阅、权益门禁及 RevenueCat / Paddle / 后端配额链路，应用不再包含付费入口。原订阅实现与文档仅作历史记录保留，不再作为发布范围。
 
 ## 近阶段工作重点
 
-1. 解决 Android 离线 ASR 闪退。
-2. 完成启动埋点权限快照的手动验证。
-3. 继续收敛录音识别模块复用边界。
-4. 维持 release / 渠道 / 订阅链路的一致性。
+1. 完成纯端侧版本全量回归，清理下线功能的旧测试、入口与文案残留。
+2. 构建并校验 Android APK，真机验证 AI 口语、BYOK 讲解、导入与本地备份。
+3. 解决 Android 离线 ASR 闪退。
+4. 继续收敛录音识别模块复用边界。
 
 ## 架构约束（精简版）
 
@@ -94,7 +93,7 @@ Echo Loop 是一个围绕“音频输入 + 句子级学习 + 间隔复习 + AI �
 - 媒体引擎与前台引擎分离：避免锁屏媒体会话与前台试听互相污染。
 - 统一 TTS 架构：合成 → 文件 → 缓存 → 播放，支持平台 TTS 与 Kokoro 本地 TTS。
 - 离线转录与本地模型：复用统一音频处理与模型下载能力。
-- 平台 + 渠道统一识别：`platform + distribution` 决定支付实现和后端配额策略。
+- 纯端侧与 BYOK：不设自建后台、账号与订阅，AI 通过用户自填 Key 客户端直连；学习数据与凭据只存本机。
 - 通用记忆调度基础设施：以独立调度快照与只追加复习事件建模；上层依赖应用自有接口，FSRS 仅限 adapter 内部，按逐项固定 Profile 保障可迁移与可审计性（见 [memory-scheduler-infrastructure-plan.md](./docs/memory-scheduler-infrastructure-plan.md)）。
 
 详细历史与旧版长文档已归档：

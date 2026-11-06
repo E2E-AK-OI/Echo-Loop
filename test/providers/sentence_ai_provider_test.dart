@@ -87,9 +87,8 @@ void main() {
     const text = 'Hello world';
 
     test('后端 402（本月额度用尽）→ 抛 AiFeatureQuotaExceededException', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _errorTranslation(
@@ -117,9 +116,8 @@ void main() {
 
     test('后端 quota_exceeded 响应携带 resetAt 时透传到异常', () async {
       final resetAt = DateTime.utc(2026, 8);
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _errorTranslation(
@@ -157,9 +155,8 @@ void main() {
     });
 
     test('后端 quota_exceeded 且 limit=0 时透传免费版不支持原因', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _errorTranslation(
@@ -202,9 +199,8 @@ void main() {
         apiClient: mockApi,
         onBackendQuotaRejected: rejected.add,
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _errorTranslation(
@@ -232,9 +228,8 @@ void main() {
     });
 
     test('后端 401（登录态失效）→ 抛 AiFeatureAuthRequiredException，不重试', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       var apiCalls = 0;
       when(
         () => mockApi.translateStream(
@@ -279,9 +274,8 @@ void main() {
         apiClient: mockApi,
         onBackendQuotaRejected: rejected.add,
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _errorTranslation(
@@ -309,9 +303,8 @@ void main() {
     });
 
     test('非 402 的 Dio 错误原样抛出（不误判为额度超限）', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _errorTranslation(
@@ -338,9 +331,8 @@ void main() {
     });
 
     test('L2 SQLite 缓存命中，一次性 yield 译文', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => '{"translation":"你好世界"}');
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => '{"translation":"你好世界"}');
 
       final frames = await notifier
           .getTranslationStream(
@@ -365,13 +357,11 @@ void main() {
     });
 
     test('L3 流式调用：逐帧 yield，收 final 后写 L1+L2', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(text, () => _finalTranslation('你好世界'));
-      when(
-        () => mockDao.upsert(any(), l2TranslationType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2TranslationType, any()))
+          .thenAnswer((_) async {});
 
       final result = await notifier
           .getTranslationStream(
@@ -387,32 +377,9 @@ void main() {
       expect(notifier.getCachedTranslation(text)?.translation, '你好世界');
     });
 
-    test('L2 未命中且无 accessToken 时抛出登录需求，不调用 API', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
-
-      await expectLater(
-        notifier.getTranslationStream(text, targetLanguage: lang).toList(),
-        throwsA(isA<AiFeatureAuthRequiredException>()),
-      );
-
-      verifyNever(
-        () => mockApi.translateStream(
-          any(),
-          previousText: any(named: 'previousText'),
-          nextText: any(named: 'nextText'),
-          targetLanguage: any(named: 'targetLanguage'),
-          accessToken: any(named: 'accessToken'),
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      );
-    });
-
     test('中途取消（未收 final）不写缓存', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       // 只发部分帧、无 final（模拟客户端关流）
       stubTranslateStream(
         text,
@@ -438,13 +405,11 @@ void main() {
 
     test('并发请求去重（共享同一后端流）', () async {
       final controller = StreamController<SentenceTranslationStreamFrame>();
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(text, () => controller.stream);
-      when(
-        () => mockDao.upsert(any(), l2TranslationType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2TranslationType, any()))
+          .thenAnswer((_) async {});
 
       final f1 = notifier
           .getTranslationStream(
@@ -489,12 +454,10 @@ void main() {
     });
 
     test('前后句上下文进缓存键：不同上下文各自独立', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
-      when(
-        () => mockDao.upsert(any(), l2TranslationType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
+      when(() => mockDao.upsert(any(), l2TranslationType, any()))
+          .thenAnswer((_) async {});
       when(
         () => mockApi.translateStream(
           text,
@@ -532,8 +495,7 @@ void main() {
 
     test('L2 SQLite 缓存命中，一次性 yield 结构化结果', () async {
       when(() => mockDao.getByHash(any(), l2AnalysisType)).thenAnswer(
-        (_) async =>
-            '{"grammar":[{"point":"现在完成进行时","note":"表持续"}],"vocabulary":[],"listening":[]}',
+        (_) async => '{"grammar":[{"point":"现在完成进行时","note":"表持续"}],"vocabulary":[],"listening":[]}',
       );
 
       final frames = await notifier
@@ -553,9 +515,8 @@ void main() {
     });
 
     test('L3 流式调用：逐帧 yield，收 final 后写 L2', () async {
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2AnalysisType))
+          .thenAnswer((_) async => null);
       when(
         () => mockApi.analyzeStream(
           text,
@@ -564,9 +525,8 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).thenAnswer((_) => _finalFrame(_analysisSample));
-      when(
-        () => mockDao.upsert(any(), l2AnalysisType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2AnalysisType, any()))
+          .thenAnswer((_) async {});
 
       final result = await notifier
           .getAnalysisStream(text, targetLanguage: lang, accessToken: 'token')
@@ -583,9 +543,8 @@ void main() {
         apiClient: mockApi,
         onConsumeTrial: consumed.add,
       );
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2AnalysisType))
+          .thenAnswer((_) async => null);
       var calls = 0;
       when(
         () => mockApi.analyzeStream(
@@ -613,30 +572,9 @@ void main() {
       verifyNever(() => mockDao.upsert(any(), l2AnalysisType, any()));
     });
 
-    test('L2 未命中且无 accessToken 时抛出登录需求，不调用 API', () async {
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
-
-      await expectLater(
-        notifier.getAnalysisStream(text, targetLanguage: lang).toList(),
-        throwsA(isA<AiFeatureAuthRequiredException>()),
-      );
-
-      verifyNever(
-        () => mockApi.analyzeStream(
-          any(),
-          targetLanguage: any(named: 'targetLanguage'),
-          accessToken: any(named: 'accessToken'),
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      );
-    });
-
     test('中途取消（未收 final）不写缓存', () async {
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2AnalysisType))
+          .thenAnswer((_) async => null);
       // 只发部分帧、无 final（模拟客户端关流）
       when(
         () => mockApi.analyzeStream(
@@ -673,9 +611,8 @@ void main() {
 
   group('clearMemoryCache', () {
     test('清除后 getCachedTranslation 返回 null', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream('test', () => _finalTranslation('t'));
       when(() => mockDao.upsert(any(), any(), any())).thenAnswer((_) async {});
 
@@ -697,9 +634,8 @@ void main() {
     const text = 'She has been studying.';
 
     test('L1 内存缓存命中直接返回，不查 DB 也不调 API', () async {
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2AnalysisType))
+          .thenAnswer((_) async => null);
       when(
         () => mockApi.analyzeStream(
           text,
@@ -708,9 +644,8 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).thenAnswer((_) => _finalFrame(_analysisSample));
-      when(
-        () => mockDao.upsert(any(), l2AnalysisType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2AnalysisType, any()))
+          .thenAnswer((_) async {});
 
       // 第一次：L3 流式写入 L1
       await notifier
@@ -740,9 +675,8 @@ void main() {
     test('并发请求同一句子复用同一条流式 API 调用', () async {
       final controller = StreamController<SentenceAnalysisStreamFrame>();
 
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2AnalysisType))
+          .thenAnswer((_) async => null);
       when(
         () => mockApi.analyzeStream(
           text,
@@ -751,9 +685,8 @@ void main() {
           cancelToken: any(named: 'cancelToken'),
         ),
       ).thenAnswer((_) => controller.stream);
-      when(
-        () => mockDao.upsert(any(), l2AnalysisType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2AnalysisType, any()))
+          .thenAnswer((_) async {});
 
       final first = notifier
           .getAnalysisStream(text, targetLanguage: lang, accessToken: 'token')
@@ -786,9 +719,8 @@ void main() {
 
   group('失败处理', () {
     test('getTranslationStream API 失败时不写入缓存', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         'fail test',
         () => _errorTranslation(Exception('network error')),
@@ -812,16 +744,14 @@ void main() {
 
     test('clearMemoryCache 同时清除 analysis 缓存', () async {
       // 写入 translation
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream('test', () => _finalTranslation('t'));
       when(() => mockDao.upsert(any(), any(), any())).thenAnswer((_) async {});
 
       // 写入 analysis
-      when(
-        () => mockDao.getByHash(any(), l2AnalysisType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2AnalysisType))
+          .thenAnswer((_) async => null);
       when(
         () => mockApi.analyzeStream(
           any(),
@@ -867,25 +797,6 @@ void main() {
       ).thenAnswer((_) => f());
     }
 
-    test('L2 未命中且无 accessToken 时抛出登录需求，不调用 API', () async {
-      when(
-        () => mockDao.getByHash(hash, 'sense_groups'),
-      ).thenAnswer((_) async => null);
-
-      await expectLater(
-        notifier.getSenseGroupsStream(text).toList(),
-        throwsA(isA<AiFeatureAuthRequiredException>()),
-      );
-
-      verifyNever(
-        () => mockApi.senseGroupsStream(
-          any(),
-          accessToken: any(named: 'accessToken'),
-          cancelToken: any(named: 'cancelToken'),
-        ),
-      );
-    });
-
     test('L2 SQLite 缓存命中，一次性 yield，不调 API', () async {
       when(() => mockDao.getByHash(hash, 'sense_groups')).thenAnswer(
         (_) async => '{"medium":["Hello world"],"fine":["Hello","world"]}',
@@ -905,9 +816,8 @@ void main() {
     });
 
     test('L3 流式：逐帧 yield，final 且 concat 校验通过 → 写 L1+L2', () async {
-      when(
-        () => mockDao.getByHash(hash, 'sense_groups'),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(hash, 'sense_groups'))
+          .thenAnswer((_) async => null);
       // medium 拼接 = 原句；fine 拼接剥空白后 = 原句 → 校验通过
       stubSenseGroupsStream(
         () => _finalSenseGroups(
@@ -917,9 +827,8 @@ void main() {
           ),
         ),
       );
-      when(
-        () => mockDao.upsert(hash, 'sense_groups', any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(hash, 'sense_groups', any()))
+          .thenAnswer((_) async {});
 
       final result = await notifier
           .getSenseGroupsStream(text, accessToken: 'token')
@@ -931,9 +840,8 @@ void main() {
     });
 
     test('final concat 校验失败 → 不落缓存（可重试）', () async {
-      when(
-        () => mockDao.getByHash(hash, 'sense_groups'),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(hash, 'sense_groups'))
+          .thenAnswer((_) async => null);
       // 拼接（含剥空白+标点）都无法还原原句 → 校验失败
       stubSenseGroupsStream(
         () => _finalSenseGroups(
@@ -948,9 +856,8 @@ void main() {
     });
 
     test('中途取消（未收 final）→ 不落缓存', () async {
-      when(
-        () => mockDao.getByHash(hash, 'sense_groups'),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(hash, 'sense_groups'))
+          .thenAnswer((_) async => null);
       stubSenseGroupsStream(
         () => Stream.fromIterable([
           const SenseGroupsStreamFrame(
@@ -974,12 +881,10 @@ void main() {
         guardFeature: (_) {},
         onConsumeTrial: consumed.add,
       );
-      when(
-        () => mockDao.getByHash(hash, 'sense_groups'),
-      ).thenAnswer((_) async => null);
-      when(
-        () => mockDao.upsert(hash, 'sense_groups', any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.getByHash(hash, 'sense_groups'))
+          .thenAnswer((_) async => null);
+      when(() => mockDao.upsert(hash, 'sense_groups', any()))
+          .thenAnswer((_) async {});
       stubSenseGroupsStream(
         () => _finalSenseGroups(
           const SenseGroupResult(
@@ -996,9 +901,8 @@ void main() {
 
   group('translationContextHash 一致性', () {
     test('归一化后相同的文本命中同一缓存', () async {
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream('Hello World.', () => _finalTranslation('x'));
       when(() => mockDao.upsert(any(), any(), any())).thenAnswer((_) async {});
 
@@ -1034,9 +938,8 @@ void main() {
         guardFeature: (_) => throw const AiFeatureQuotaExceededException(),
         onConsumeTrial: consumed.add,
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
 
       await expectLater(
         gated
@@ -1070,13 +973,11 @@ void main() {
         guardFeature: (_) {}, // 放行
         onConsumeTrial: consumed.add,
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(text, () => _finalTranslation('你好世界'));
-      when(
-        () => mockDao.upsert(any(), l2TranslationType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2TranslationType, any()))
+          .thenAnswer((_) async {});
 
       await gated
           .getTranslationStream(
@@ -1100,9 +1001,8 @@ void main() {
           }
         },
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
 
       await expectLater(
         gated
@@ -1137,13 +1037,11 @@ void main() {
           expect(respectLocalQuotaReset, isFalse);
         },
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(text, () => _finalTranslation('你好世界'));
-      when(
-        () => mockDao.upsert(any(), l2TranslationType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2TranslationType, any()))
+          .thenAnswer((_) async {});
 
       final result = await gated
           .getTranslationStream(
@@ -1175,13 +1073,11 @@ void main() {
           cleared.add(feature);
         },
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => null);
       stubTranslateStream(text, () => _finalTranslation('你好世界'));
-      when(
-        () => mockDao.upsert(any(), l2TranslationType, any()),
-      ).thenAnswer((_) async {});
+      when(() => mockDao.upsert(any(), l2TranslationType, any()))
+          .thenAnswer((_) async {});
 
       await gated
           .getTranslationStream(
@@ -1202,9 +1098,8 @@ void main() {
         guardFeature: (_) => throw const AiFeatureQuotaExceededException(),
         onConsumeTrial: consumed.add,
       );
-      when(
-        () => mockDao.getByHash(any(), l2TranslationType),
-      ).thenAnswer((_) async => '{"translation":"你好世界"}');
+      when(() => mockDao.getByHash(any(), l2TranslationType))
+          .thenAnswer((_) async => '{"translation":"你好世界"}');
 
       final result = await gated
           .getTranslationStream(
@@ -1223,9 +1118,8 @@ void main() {
 
     test('不同语言各自独立缓存', () async {
       // zh-CN 缓存
-      when(
-        () => mockDao.getByHash(any(), 'translation_v2:zh-CN'),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), 'translation_v2:zh-CN'))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _finalTranslation('你好'),
@@ -1243,9 +1137,8 @@ void main() {
       expect(zhResult.translation, '你好');
 
       // zh-TW 缓存（应该不命中 zh-CN 的 L1）
-      when(
-        () => mockDao.getByHash(any(), 'translation_v2:zh-TW'),
-      ).thenAnswer((_) async => null);
+      when(() => mockDao.getByHash(any(), 'translation_v2:zh-TW'))
+          .thenAnswer((_) async => null);
       stubTranslateStream(
         text,
         () => _finalTranslation('你好'),

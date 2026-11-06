@@ -10123,6 +10123,390 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'From {collections}'**
   String learningPlanFromCollection(String collections);
+
+  /// No description provided for @aiSpeakingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Speaking Practice'**
+  String get aiSpeakingTitle;
+
+  /// No description provided for @aiSpeakingEntryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Speaking Practice'**
+  String get aiSpeakingEntryTitle;
+
+  /// No description provided for @aiSpeakingEntrySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Free conversation with an AI partner'**
+  String get aiSpeakingEntrySubtitle;
+
+  /// No description provided for @aiSpeakingWelcomeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Let\'s start speaking'**
+  String get aiSpeakingWelcomeTitle;
+
+  /// No description provided for @aiSpeakingWelcomeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk about anything in English. Your AI partner will reply and gently help you improve.'**
+  String get aiSpeakingWelcomeBody;
+
+  /// No description provided for @aiSpeakingPrivacyNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your voice is sent to Alibaba Cloud for recognition. API keys are stored only on this device.'**
+  String get aiSpeakingPrivacyNotice;
+
+  /// No description provided for @aiSpeakingStarterDaily.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk about my day'**
+  String get aiSpeakingStarterDaily;
+
+  /// No description provided for @aiSpeakingStarterInterview.
+  ///
+  /// In en, this message translates to:
+  /// **'Practice a job interview'**
+  String get aiSpeakingStarterInterview;
+
+  /// No description provided for @aiSpeakingStarterWeekend.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan a weekend trip'**
+  String get aiSpeakingStarterWeekend;
+
+  /// No description provided for @aiSpeakingTapToFinish.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to finish'**
+  String get aiSpeakingTapToFinish;
+
+  /// No description provided for @aiSpeakingListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening…'**
+  String get aiSpeakingListening;
+
+  /// No description provided for @aiSpeakingCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get aiSpeakingCancel;
+
+  /// No description provided for @aiSpeakingFinalizing.
+  ///
+  /// In en, this message translates to:
+  /// **'Finishing…'**
+  String get aiSpeakingFinalizing;
+
+  /// No description provided for @aiSpeakingThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get aiSpeakingThinking;
+
+  /// No description provided for @aiSpeakingSpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking…'**
+  String get aiSpeakingSpeaking;
+
+  /// No description provided for @aiSpeakingInputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type in English or tap the microphone'**
+  String get aiSpeakingInputHint;
+
+  /// No description provided for @aiSpeakingSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get aiSpeakingSend;
+
+  /// No description provided for @aiSpeakingStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get aiSpeakingStop;
+
+  /// No description provided for @aiSpeakingRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get aiSpeakingRetry;
+
+  /// No description provided for @aiSpeakingReplay.
+  ///
+  /// In en, this message translates to:
+  /// **'Replay'**
+  String get aiSpeakingReplay;
+
+  /// No description provided for @aiSpeakingNewConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'New conversation'**
+  String get aiSpeakingNewConversation;
+
+  /// No description provided for @aiSpeakingNewConversationConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear this conversation and start a new one?'**
+  String get aiSpeakingNewConversationConfirm;
+
+  /// No description provided for @aiSpeakingConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get aiSpeakingConfirm;
+
+  /// No description provided for @aiSpeakingSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Speaking Settings'**
+  String get aiSpeakingSettingsTitle;
+
+  /// No description provided for @aiSpeakingLlmSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Large Language Model'**
+  String get aiSpeakingLlmSection;
+
+  /// No description provided for @aiSpeakingProviderLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider'**
+  String get aiSpeakingProviderLabel;
+
+  /// No description provided for @aiSpeakingProviderDeepSeek.
+  ///
+  /// In en, this message translates to:
+  /// **'DeepSeek'**
+  String get aiSpeakingProviderDeepSeek;
+
+  /// No description provided for @aiSpeakingProviderBailian.
+  ///
+  /// In en, this message translates to:
+  /// **'Alibaba Cloud Bailian'**
+  String get aiSpeakingProviderBailian;
+
+  /// No description provided for @aiSpeakingProviderOpenAi.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenAI'**
+  String get aiSpeakingProviderOpenAi;
+
+  /// No description provided for @aiSpeakingProviderCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom (OpenAI compatible)'**
+  String get aiSpeakingProviderCustom;
+
+  /// No description provided for @aiSpeakingBaseUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Base URL'**
+  String get aiSpeakingBaseUrlLabel;
+
+  /// No description provided for @aiSpeakingApiKeyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'API Key'**
+  String get aiSpeakingApiKeyLabel;
+
+  /// No description provided for @aiSpeakingModelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get aiSpeakingModelLabel;
+
+  /// No description provided for @aiSpeakingTemperatureLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Temperature'**
+  String get aiSpeakingTemperatureLabel;
+
+  /// No description provided for @aiSpeakingSpeechSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech Service (Alibaba Cloud)'**
+  String get aiSpeakingSpeechSection;
+
+  /// No description provided for @aiSpeakingDashscopeKeyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'DashScope API Key'**
+  String get aiSpeakingDashscopeKeyLabel;
+
+  /// No description provided for @aiSpeakingWorkspaceIdLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace ID (optional)'**
+  String get aiSpeakingWorkspaceIdLabel;
+
+  /// No description provided for @aiSpeakingAsrModelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'ASR Model'**
+  String get aiSpeakingAsrModelLabel;
+
+  /// No description provided for @aiSpeakingTtsModelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'TTS Model'**
+  String get aiSpeakingTtsModelLabel;
+
+  /// No description provided for @aiSpeakingVoiceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice'**
+  String get aiSpeakingVoiceLabel;
+
+  /// No description provided for @aiSpeakingRateLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech Rate'**
+  String get aiSpeakingRateLabel;
+
+  /// No description provided for @aiSpeakingAutoPlayLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-play replies'**
+  String get aiSpeakingAutoPlayLabel;
+
+  /// No description provided for @aiSpeakingPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview voice'**
+  String get aiSpeakingPreview;
+
+  /// No description provided for @aiSpeakingPrivacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy & Billing'**
+  String get aiSpeakingPrivacyTitle;
+
+  /// No description provided for @aiSpeakingPrivacyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio and text are sent directly from this device to the model providers you configure. API usage is billed by those providers. Keys are stored only in this device\'s secure storage.'**
+  String get aiSpeakingPrivacyBody;
+
+  /// No description provided for @aiSpeakingUnsupportedPlatform.
+  ///
+  /// In en, this message translates to:
+  /// **'AI speaking practice is only supported on Android.'**
+  String get aiSpeakingUnsupportedPlatform;
+
+  /// No description provided for @aiSpeakingPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone permission is required.'**
+  String get aiSpeakingPermissionDenied;
+
+  /// No description provided for @aiSpeakingOpenSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get aiSpeakingOpenSettings;
+
+  /// No description provided for @aiSpeakingMissingConfig.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your API keys in AI Speaking Settings first.'**
+  String get aiSpeakingMissingConfig;
+
+  /// No description provided for @aiSpeakingNoSpeech.
+  ///
+  /// In en, this message translates to:
+  /// **'No speech was recognized. Please try again.'**
+  String get aiSpeakingNoSpeech;
+
+  /// No description provided for @aiSpeakingErrorAsr.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech recognition failed.'**
+  String get aiSpeakingErrorAsr;
+
+  /// No description provided for @aiSpeakingErrorLlm.
+  ///
+  /// In en, this message translates to:
+  /// **'The AI reply failed.'**
+  String get aiSpeakingErrorLlm;
+
+  /// No description provided for @aiSpeakingErrorTts.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech playback failed.'**
+  String get aiSpeakingErrorTts;
+
+  /// No description provided for @aiSpeakingErrorUnauthorized.
+  ///
+  /// In en, this message translates to:
+  /// **'The API key was rejected. Check your settings.'**
+  String get aiSpeakingErrorUnauthorized;
+
+  /// No description provided for @aiSpeakingErrorRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many requests. Please try again later.'**
+  String get aiSpeakingErrorRateLimited;
+
+  /// No description provided for @aiSpeakingErrorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network error. Check your connection.'**
+  String get aiSpeakingErrorNetwork;
+
+  /// No description provided for @aiSpeakingErrorServer.
+  ///
+  /// In en, this message translates to:
+  /// **'The service is temporarily unavailable.'**
+  String get aiSpeakingErrorServer;
+
+  /// No description provided for @aiSpeakingSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get aiSpeakingSave;
+
+  /// No description provided for @aiSpeakingSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get aiSpeakingSaved;
+
+  /// No description provided for @aiSpeakingKeyConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Configured'**
+  String get aiSpeakingKeyConfigured;
+
+  /// No description provided for @aiSpeakingKeyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Not configured'**
+  String get aiSpeakingKeyMissing;
+
+  /// No description provided for @aiSpeakingCustomModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a model name below'**
+  String get aiSpeakingCustomModel;
+
+  /// No description provided for @aiSpeakingInvalidBaseUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid http(s) URL'**
+  String get aiSpeakingInvalidBaseUrl;
+
+  /// No description provided for @aiSpeakingPreviewFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice preview failed.'**
+  String get aiSpeakingPreviewFailed;
 }
 
 class _AppLocalizationsDelegate

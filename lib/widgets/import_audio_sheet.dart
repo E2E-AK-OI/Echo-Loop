@@ -11,8 +11,6 @@ import '../features/baidu_netdisk/models/baidu_account_profile.dart';
 import '../features/baidu_netdisk/providers/baidu_netdisk_import_controller.dart';
 import '../features/baidu_netdisk/providers/baidu_netdisk_import_tasks_provider.dart';
 import '../features/baidu_netdisk/providers/baidu_netdisk_providers.dart';
-import '../features/remote_config/remote_config.dart';
-import '../features/remote_config/remote_config_providers.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'add_audio_dialog.dart';
@@ -86,9 +84,6 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
     );
     final baiduTasks = ref.watch(baiduNetdiskImportTasksProvider);
     final unavailableFsIds = _unavailableBaiduFsIds(baiduTasks);
-    final cloudDriveImportEnabled = ref.watch(
-      remoteFeatureEnabledProvider(RemoteFeature.cloudDriveImport),
-    );
     final busy = _isBusy(state) || baiduState.isBusy || _localImporting;
     final importing = _isBusy(state) || _localImporting;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -128,11 +123,7 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
                   child: SingleChildScrollView(
                     controller: _sheetScrollController,
                     primary: false,
-                    child: _buildStep(
-                      l10n,
-                      state,
-                      cloudDriveImportEnabled: cloudDriveImportEnabled,
-                    ),
+                    child: _buildStep(l10n, state),
                   ),
                 ),
               ],
@@ -250,11 +241,7 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
     };
   }
 
-  Widget _buildStep(
-    AppLocalizations l10n,
-    AudioImportState state, {
-    required bool cloudDriveImportEnabled,
-  }) {
+  Widget _buildStep(AppLocalizations l10n, AudioImportState state) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       switchInCurve: Curves.easeOutCubic,
@@ -262,10 +249,8 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
       child: switch (_step) {
         _ImportStep.chooseSource => _ChooseSourcePanel(
           key: const ValueKey('choose-source'),
-          showCloudDrive: cloudDriveImportEnabled,
           onLocalFile: () => setState(() => _step = _ImportStep.localFile),
           onDirectUrl: () => setState(() => _step = _ImportStep.directUrl),
-          onCloudDrive: () => setState(() => _step = _ImportStep.cloudDrive),
         ),
         _ImportStep.localFile => AddAudioDialog(
           key: const ValueKey('local-file'),
@@ -677,16 +662,12 @@ class _HeaderTextButton extends StatelessWidget {
 class _ChooseSourcePanel extends StatelessWidget {
   const _ChooseSourcePanel({
     super.key,
-    required this.showCloudDrive,
     required this.onLocalFile,
     required this.onDirectUrl,
-    required this.onCloudDrive,
   });
 
-  final bool showCloudDrive;
   final VoidCallback onLocalFile;
   final VoidCallback onDirectUrl;
-  final VoidCallback onCloudDrive;
 
   @override
   Widget build(BuildContext context) {
@@ -701,15 +682,6 @@ class _ChooseSourcePanel extends StatelessWidget {
           title: l10n.importAudioFromFile,
           onTap: onLocalFile,
         ),
-        if (showCloudDrive) ...[
-          const SizedBox(height: 8),
-          _ImportOptionTile(
-            key: const ValueKey('import-option-cloud-drive'),
-            icon: Icons.cloud_outlined,
-            title: l10n.importAudioFromCloudDrive,
-            onTap: onCloudDrive,
-          ),
-        ],
         const SizedBox(height: 8),
         _ImportOptionTile(
           key: const ValueKey('import-option-direct-url'),

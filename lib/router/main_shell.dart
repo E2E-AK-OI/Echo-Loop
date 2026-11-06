@@ -9,20 +9,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
-import '../models/app_update_info.dart';
 import '../models/learning_progress.dart';
 import '../models/reminder_settings.dart';
 import '../analytics/analytics_providers.dart';
 import '../analytics/models/event_names.dart';
-import '../services/runtime_endpoint_router.dart';
 import '../database/providers.dart';
 import '../features/podcast/podcast_refresh_controller.dart';
-import '../features/remote_config/remote_config_providers.dart';
-import '../features/user_region/user_region_providers.dart';
-import '../providers/app_update_provider.dart';
 import '../providers/audio_library_provider.dart';
 import '../providers/collection_provider.dart';
 import '../providers/learning_progress_provider.dart';
@@ -41,13 +35,11 @@ import '../providers/tag_provider.dart';
 import '../providers/time_provider.dart';
 import '../services/app_logger.dart';
 import '../services/startup_trace.dart';
-import '../services/app_update_launcher.dart';
 import '../services/review_reminder_service.dart';
 import '../services/review_reminder_time_calculator.dart';
 import '../screens/log_viewer_screen.dart';
 import '../providers/new_user_guide_provider.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_update_dialog.dart';
 import '../widgets/notification_permission_dialog.dart';
 import '../widgets/common/prewarm_visibility.dart';
 import '../widgets/startup_splash_screen.dart';
@@ -70,13 +62,11 @@ class _MainShellState extends ConsumerState<MainShell>
   ModalRoute<void>? _observedRoute;
   ProviderSubscription<int>? _pendingTaskCountSubscription;
   ProviderSubscription<Map<String, LearningProgress>>? _progressMapSubscription;
-  ProviderSubscription<AppUpdateState>? _appUpdateSubscription;
   ProviderSubscription<ReminderSettings>? _reminderSettingsSubscription;
   ProviderSubscription<Locale?>? _appLocaleSubscription;
   ProviderSubscription<int>? _notificationPromptSubscription;
   ProviderSubscription<GuideControllerState>? _guideWaitSubscription;
   ProviderSubscription<AsyncValue<StartupReport>>? _localStartupSubscription;
-  late final RemoteConfigController _remoteConfigController;
   late final AppLifecycleListener _lifecycleListener;
   bool _didStartPostLocalTasks = false;
   bool _rootRouteVisible = true;
@@ -161,15 +151,6 @@ class _MainShellState extends ConsumerState<MainShell>
     );
   }
 
-  /// 按社区入口的相同规则打开联系我们页面。
-  Future<void> _openContactUs() async {
-    ref.read(analyticsServiceProvider).track(Events.communityInviteTapped);
-    final isZh = Localizations.localeOf(context).languageCode == 'zh';
-    final path = isZh ? '/zh-CN/social' : '/en/social';
-    final uri = runtimeEndpointRouter.apiUri(path);
-    await launchUrl(uri);
-  }
-
   /// 预热学习页首屏所需数据：音频列表 + 学习进度。
   Future<void> _bootstrapStudyLandingData() {
     return Future.wait<void>([
@@ -183,8 +164,6 @@ class _MainShellState extends ConsumerState<MainShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     activeStartupTrace?.mark('main_shell_init_state');
-    // 缓存 controller，避免 dispose 阶段从已卸载的 ConsumerState ref 读取 provider。
-    _remoteConfigController = ref.read(remoteConfigProvider.notifier);
     _lifecycleListener = AppLifecycleListener(
       onResume: _onAppResume,
       onHide: _onAppBackground,
@@ -205,7 +184,7 @@ class _MainShellState extends ConsumerState<MainShell>
   void _startPostLocalTasks() {
     if (!mounted || _didStartPostLocalTasks) return;
     _didStartPostLocalTasks = true;
-    // AppUpdate 读取 storefront，必须晚于第三方 SDK 初始化。
+    // 通知权限、远程配置与学习页预热在第三方 SDK 初始化完成后启动。
     unawaited(_startPostThirdPartyTasks());
   }
 
@@ -217,32 +196,11 @@ class _MainShellState extends ConsumerState<MainShell>
       AppLogger.log('Startup', '第三方启动 gate 失败: $error\n$stackTrace');
     }
     if (!mounted) return;
-    _startAppUpdateListening();
+    _startPostFrameTasks();
   }
 
-  /// 注册版本更新结果监听，并让 provider 在首帧后的后台阶段检查更新。
-  void _startAppUpdateListening() {
-    _appUpdateSubscription = ref.listenManual<AppUpdateState>(appUpdateProvider, (
-      previous,
-      next,
-    ) {
-      if (next is! AppUpdateResult || next.type == AppUpdateType.none) return;
-      if (previous is AppUpdateResult &&
-          previous.type == next.type &&
-          previous.info?.latestVersion == next.info?.latestVersion) {
-        AppLogger.log(
-          'AppUpdate',
-          'listener skipped: same version ${next.info?.latestVersion}',
-        );
-        return;
-      }
-      AppLogger.log(
-        'AppUpdate',
-        'listener show dialog: ${next.info?.latestVersion} (${next.type.name})',
-      );
-      _showUpdateDialog(next);
-    });
-
+  /// 首帧后启动通知权限同步、远程配置与学习页预热等任务。
+  void _startPostFrameTasks() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
 
@@ -250,12 +208,6 @@ class _MainShellState extends ConsumerState<MainShell>
       ref
           .read(notificationPermissionServiceProvider)
           .syncSystemAuthorizationStatus();
-      final regionResult = ref.read(userRegionBootstrapProvider).value;
-      final startupConfigResolved = regionResult?.configFetched ?? false;
-      _remoteConfigController.startPeriodicRefresh(
-        forceFirst: !startupConfigResolved,
-        skipInitialRequest: startupConfigResolved,
-      );
 
       AppLogger.log('StartupLoad', 'study bootstrap start');
       activeStartupTrace?.mark('study_bootstrap_start');
@@ -441,11 +393,9 @@ class _MainShellState extends ConsumerState<MainShell>
     if (_observedRoute != null) {
       rootRouteObserver.unsubscribe(this);
     }
-    _remoteConfigController.stopPeriodicRefresh();
     _lifecycleListener.dispose();
     _pendingTaskCountSubscription?.close();
     _progressMapSubscription?.close();
-    _appUpdateSubscription?.close();
     _reminderSettingsSubscription?.close();
     _appLocaleSubscription?.close();
     _notificationPromptSubscription?.close();
@@ -506,23 +456,6 @@ class _MainShellState extends ConsumerState<MainShell>
     return completer.future;
   }
 
-  /// 显示版本更新对话框
-  void _showUpdateDialog(AppUpdateResult result) {
-    if (!mounted || result.info == null) return;
-    final isForce = result.type == AppUpdateType.forceUpdate;
-    final downloadUrl = AppUpdate.getDownloadUrl(result.info!);
-    final launcher = AppUpdateLauncher();
-    showAppUpdateDialog(
-      context: context,
-      info: result.info!,
-      isForceUpdate: isForce,
-      downloadUrl: downloadUrl,
-      onUpdate: () =>
-          launcher.launch(info: result.info!, primaryUrl: downloadUrl),
-      onDismiss: () => ref.read(appUpdateProvider.notifier).dismiss(),
-    );
-  }
-
   /// Tab 切换埋点：StatefulShellRoute 的 Tab 切换不经过 Navigator，
   /// AnalyticsObserver 无法自动捕获，需手动上报。
   static const _tabScreenNames = [
@@ -578,20 +511,10 @@ class _MainShellState extends ConsumerState<MainShell>
     }
   }
 
-  /// App 回到前台回调：刷新学习数据 + 后台检查版本更新 + 同步通知权限
+  /// App 回到前台回调：刷新学习数据 + 同步通知权限
   void _onAppResume() {
-    AppLogger.log('AppUpdate', 'onAppResume: trigger checkInBackground');
     unawaited(_refreshStudyData(source: 'app-resume'));
-    if (ref.read(thirdPartyStartupProvider).hasValue) {
-      unawaited(ref.read(appUpdateProvider.notifier).checkInBackground());
-    } else {
-      AppLogger.log(
-        'AppUpdate',
-        'onAppResume skipped: third-party startup pending',
-      );
-    }
     unawaited(_refreshSubscribedPodcastsInBackground());
-    ref.read(remoteConfigProvider.notifier).startPeriodicRefresh();
     // 回前台时同步系统通知权限状态，覆盖用户在系统设置中手动变更的情况
     unawaited(
       ref
@@ -600,10 +523,8 @@ class _MainShellState extends ConsumerState<MainShell>
     );
   }
 
-  /// App 离开前台时停止 remote config 前台定时刷新。
-  void _onAppBackground() {
-    ref.read(remoteConfigProvider.notifier).stopPeriodicRefresh();
-  }
+  /// App 离开前台时无需额外处理；保留回调以维持生命周期监听结构。
+  void _onAppBackground() {}
 
   /// 使用统一控制器静默刷新已订阅播客。
   Future<void> _refreshSubscribedPodcastsInBackground() async {
@@ -886,11 +807,6 @@ class _MainShellState extends ConsumerState<MainShell>
                   ),
                   icon: const Icon(Icons.refresh),
                   label: Text(l10n.retry),
-                ),
-                TextButton.icon(
-                  onPressed: _openContactUs,
-                  icon: const Icon(Icons.group_outlined),
-                  label: Text(l10n.startupLocalDataContactUs),
                 ),
                 TextButton.icon(
                   onPressed: _openStartupLogs,

@@ -5750,4 +5750,205 @@ class AppLocalizationsEn extends AppLocalizations {
   String learningPlanFromCollection(String collections) {
     return 'From $collections';
   }
+
+  @override
+  String get aiSpeakingTitle => 'AI Speaking Practice';
+
+  @override
+  String get aiSpeakingEntryTitle => 'AI Speaking Practice';
+
+  @override
+  String get aiSpeakingEntrySubtitle => 'Free conversation with an AI partner';
+
+  @override
+  String get aiSpeakingWelcomeTitle => 'Let\'s start speaking';
+
+  @override
+  String get aiSpeakingWelcomeBody =>
+      'Talk about anything in English. Your AI partner will reply and gently help you improve.';
+
+  @override
+  String get aiSpeakingPrivacyNotice =>
+      'Your voice is sent to Alibaba Cloud for recognition. API keys are stored only on this device.';
+
+  @override
+  String get aiSpeakingStarterDaily => 'Talk about my day';
+
+  @override
+  String get aiSpeakingStarterInterview => 'Practice a job interview';
+
+  @override
+  String get aiSpeakingStarterWeekend => 'Plan a weekend trip';
+
+  @override
+  String get aiSpeakingTapToFinish => 'Tap to finish';
+
+  @override
+  String get aiSpeakingListening => 'Listening…';
+
+  @override
+  String get aiSpeakingCancel => 'Cancel';
+
+  @override
+  String get aiSpeakingFinalizing => 'Finishing…';
+
+  @override
+  String get aiSpeakingThinking => 'Thinking…';
+
+  @override
+  String get aiSpeakingSpeaking => 'Speaking…';
+
+  @override
+  String get aiSpeakingInputHint => 'Type in English or tap the microphone';
+
+  @override
+  String get aiSpeakingSend => 'Send';
+
+  @override
+  String get aiSpeakingStop => 'Stop';
+
+  @override
+  String get aiSpeakingRetry => 'Retry';
+
+  @override
+  String get aiSpeakingReplay => 'Replay';
+
+  @override
+  String get aiSpeakingNewConversation => 'New conversation';
+
+  @override
+  String get aiSpeakingNewConversationConfirm =>
+      'Clear this conversation and start a new one?';
+
+  @override
+  String get aiSpeakingConfirm => 'Confirm';
+
+  @override
+  String get aiSpeakingSettingsTitle => 'AI Speaking Settings';
+
+  @override
+  String get aiSpeakingLlmSection => 'Large Language Model';
+
+  @override
+  String get aiSpeakingProviderLabel => 'Provider';
+
+  @override
+  String get aiSpeakingProviderDeepSeek => 'DeepSeek';
+
+  @override
+  String get aiSpeakingProviderBailian => 'Alibaba Cloud Bailian';
+
+  @override
+  String get aiSpeakingProviderOpenAi => 'OpenAI';
+
+  @override
+  String get aiSpeakingProviderCustom => 'Custom (OpenAI compatible)';
+
+  @override
+  String get aiSpeakingBaseUrlLabel => 'Base URL';
+
+  @override
+  String get aiSpeakingApiKeyLabel => 'API Key';
+
+  @override
+  String get aiSpeakingModelLabel => 'Model';
+
+  @override
+  String get aiSpeakingTemperatureLabel => 'Temperature';
+
+  @override
+  String get aiSpeakingSpeechSection => 'Speech Service (Alibaba Cloud)';
+
+  @override
+  String get aiSpeakingDashscopeKeyLabel => 'DashScope API Key';
+
+  @override
+  String get aiSpeakingWorkspaceIdLabel => 'Workspace ID (optional)';
+
+  @override
+  String get aiSpeakingAsrModelLabel => 'ASR Model';
+
+  @override
+  String get aiSpeakingTtsModelLabel => 'TTS Model';
+
+  @override
+  String get aiSpeakingVoiceLabel => 'Voice';
+
+  @override
+  String get aiSpeakingRateLabel => 'Speech Rate';
+
+  @override
+  String get aiSpeakingAutoPlayLabel => 'Auto-play replies';
+
+  @override
+  String get aiSpeakingPreview => 'Preview voice';
+
+  @override
+  String get aiSpeakingPrivacyTitle => 'Privacy & Billing';
+
+  @override
+  String get aiSpeakingPrivacyBody =>
+      'Audio and text are sent directly from this device to the model providers you configure. API usage is billed by those providers. Keys are stored only in this device\'s secure storage.';
+
+  @override
+  String get aiSpeakingUnsupportedPlatform =>
+      'AI speaking practice is only supported on Android.';
+
+  @override
+  String get aiSpeakingPermissionDenied => 'Microphone permission is required.';
+
+  @override
+  String get aiSpeakingOpenSettings => 'Open Settings';
+
+  @override
+  String get aiSpeakingMissingConfig =>
+      'Add your API keys in AI Speaking Settings first.';
+
+  @override
+  String get aiSpeakingNoSpeech =>
+      'No speech was recognized. Please try again.';
+
+  @override
+  String get aiSpeakingErrorAsr => 'Speech recognition failed.';
+
+  @override
+  String get aiSpeakingErrorLlm => 'The AI reply failed.';
+
+  @override
+  String get aiSpeakingErrorTts => 'Speech playback failed.';
+
+  @override
+  String get aiSpeakingErrorUnauthorized =>
+      'The API key was rejected. Check your settings.';
+
+  @override
+  String get aiSpeakingErrorRateLimited =>
+      'Too many requests. Please try again later.';
+
+  @override
+  String get aiSpeakingErrorNetwork => 'Network error. Check your connection.';
+
+  @override
+  String get aiSpeakingErrorServer => 'The service is temporarily unavailable.';
+
+  @override
+  String get aiSpeakingSave => 'Save';
+
+  @override
+  String get aiSpeakingSaved => 'Saved';
+
+  @override
+  String get aiSpeakingKeyConfigured => 'Configured';
+
+  @override
+  String get aiSpeakingKeyMissing => 'Not configured';
+
+  @override
+  String get aiSpeakingCustomModel => 'Enter a model name below';
+
+  @override
+  String get aiSpeakingInvalidBaseUrl => 'Enter a valid http(s) URL';
+
+  @override
+  String get aiSpeakingPreviewFailed => 'Voice preview failed.';
 }

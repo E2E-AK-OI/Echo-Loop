@@ -14,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/auth/providers/auth_providers.dart';
 import '../../features/auth/sign_in_required_dialog.dart';
 import '../../features/chatbot/chatbot_flags.dart';
 import '../../features/chatbot/sentence_passage.dart';
@@ -451,11 +450,6 @@ class _SentenceExplanationViewState
     // 必须回退到 Provider，避免工具栏请求回调为空而整组 AI 按钮被禁用。
     final ai = widget.aiNotifier ?? ref.read(sentenceAiNotifierProvider);
     if (ai == null) return;
-    final accessToken = ref
-        .read(supabaseSessionProvider)
-        .value
-        ?.accessToken;
-
     ref.read(usageTrackerProvider).record(UsageEvent.senseGroupTapped);
 
     final mediumReady = Completer<void>();
@@ -474,7 +468,7 @@ class _SentenceExplanationViewState
         .streamSenseGroups(
           text: _text,
           ai: ai,
-          accessToken: accessToken,
+          accessToken: null,
           sentenceStartMs: startMs,
           sentenceEndMs: endMs,
           wordTimestamps: _wordTimestamps,
@@ -679,8 +673,7 @@ class _SentenceExplanationViewState
                 'Timing may be inaccurate',
           ),
           content: Text(
-            l10n?.senseGroupSyntheticTimingNoticeMessage ??
-                'This sense group playback timing is estimated from your uploaded subtitles and may be inaccurate.',
+            l10n?.senseGroupSyntheticTimingNoticeMessage ?? 'This sense group playback timing is estimated from your uploaded subtitles and may be inaccurate.',
           ),
           actions: [
             FilledButton(
@@ -990,9 +983,7 @@ class _SentenceExplanationViewState
         : null;
     final translationContextReady =
         !hasSentenceContextSource || (sentencesAsync?.hasValue ?? false);
-    final sentences = translationContextReady
-        ? sentencesAsync?.value
-        : null;
+    final sentences = translationContextReady ? sentencesAsync?.value : null;
     final (previousText, nextText) = translationContextReady
         ? _neighborTexts(sentences)
         : (null, null);
@@ -1018,21 +1009,16 @@ class _SentenceExplanationViewState
     final cachedAnalysis = autoShowAiAnalysis
         ? ai?.getCachedAnalysis(_text, targetLanguage: nativeLanguage)
         : null;
-    final accessToken = ref
-        .watch(supabaseSessionProvider)
-        .value
-        ?.accessToken;
-    // 讲解视图自包含：是否自动请求只由认证状态和用户 AI 设置决定，
+    // 纯端侧无账号体系：是否自动请求只由用户 AI 设置决定，
     // 宿主无需额外传入“启用自动加载”的开关。
-    final shouldAutoLoadSentenceAi =
-        accessToken != null && accessToken.isNotEmpty;
+    const shouldAutoLoadSentenceAi = true;
     final willStartAutoLoad =
         shouldAutoLoadSentenceAi &&
         (autoShowAiAnalysis ||
             autoShowAiSenseGroups ||
             (autoShowAiTranslation && translationContextReady));
     _logAutoLoadDecision(
-      hasAccessToken: accessToken != null && accessToken.isNotEmpty,
+      hasAccessToken: true,
       autoShowAiTranslation: autoShowAiTranslation,
       autoShowAiAnalysis: autoShowAiAnalysis,
       autoShowAiSenseGroups: autoShowAiSenseGroups,
@@ -1135,7 +1121,6 @@ class _SentenceExplanationViewState
                             previous: requestPreviousText,
                             next: requestNextText,
                             targetLanguage: nativeLanguage,
-                            accessToken: accessToken,
                             cancelToken: cancelToken,
                             respectLocalQuotaReset:
                                 source == SentenceAiRequestSource.automatic,
@@ -1178,7 +1163,6 @@ class _SentenceExplanationViewState
                           await for (final analysis in ai.getAnalysisStream(
                             _text,
                             targetLanguage: nativeLanguage,
-                            accessToken: accessToken,
                             cancelToken: cancelToken,
                             respectLocalQuotaReset:
                                 source == SentenceAiRequestSource.automatic,
@@ -1349,9 +1333,8 @@ class _TranscriptVisibilityMask extends StatelessWidget {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                 child: Container(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.05),
+                  color: Theme.of(context).colorScheme.onSurface
+                      .withValues(alpha: 0.05),
                 ),
               ),
             ),

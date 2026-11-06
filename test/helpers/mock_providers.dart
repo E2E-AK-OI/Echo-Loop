@@ -22,7 +22,6 @@ import 'package:echo_loop/features/usage/usage_tracker.dart';
 import 'package:echo_loop/models/audio_engine_state.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/speech_practice_models.dart';
-import 'package:echo_loop/providers/app_update_provider.dart';
 import 'package:echo_loop/providers/dictionary_provider.dart';
 import 'package:echo_loop/providers/notification_permission_provider.dart';
 import 'package:echo_loop/providers/offline_asr_settings_provider.dart';
@@ -31,7 +30,6 @@ import 'package:echo_loop/providers/speech/speech_recording_controller.dart';
 import 'package:echo_loop/providers/local_transcription_task_provider.dart';
 import 'package:echo_loop/providers/transcription_task_provider.dart';
 import 'package:echo_loop/database/providers.dart';
-import 'package:echo_loop/models/app_update_info.dart';
 import 'package:echo_loop/providers/learning_settings_provider.dart';
 import 'package:echo_loop/services/notification_permission_service.dart';
 import 'package:echo_loop/services/study_time_service.dart';
@@ -336,24 +334,6 @@ List<Override> learningSettingsOverrides({
     ),
     if (prefs != null) sharedPreferencesProvider.overrideWithValue(prefs),
   ];
-}
-
-// ========== AppUpdate ==========
-
-/// 测试用 AppUpdate — 不访问网络和 SharedPreferences
-class TestAppUpdate extends AppUpdate {
-  @override
-  AppUpdateState build() => const AppUpdateInitial();
-
-  @override
-  Future<AppUpdateResult> manualCheck() async {
-    return const AppUpdateResult(type: AppUpdateType.none);
-  }
-
-  @override
-  Future<void> dismiss() async {
-    state = const AppUpdateDismissed();
-  }
 }
 
 // ========== TranscriptionTaskManager ==========
