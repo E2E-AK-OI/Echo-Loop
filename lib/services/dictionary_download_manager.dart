@@ -107,7 +107,7 @@ class DictionaryDownloadManager {
         root: root,
         target: Directory(dir),
         resourceId: spec.resourceId,
-        uri: _endpointRouter.modelCdnUri(spec.archivePath),
+        uri: _endpointRouter.staticCdnUri(spec.archivePath),
         expectedSha256: spec.archiveSha256,
         cancelToken: cancelToken,
         onProgress: onProgress,

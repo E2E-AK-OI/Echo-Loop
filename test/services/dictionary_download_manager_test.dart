@@ -173,8 +173,8 @@ void main() {
       endpoints: const RegionalServiceEndpoints(
         globalApiBaseUrl: 'https://global-api.example',
         chinaApiBaseUrl: 'https://china-api.example',
-        globalModelCdnBaseUrl: 'https://global-cdn.example',
-        chinaModelCdnBaseUrl: 'https://china-cdn.example',
+        globalStaticCdnBaseUrl: 'https://global-cdn.example',
+        chinaStaticCdnBaseUrl: 'https://china-cdn.example',
       ),
     )..updateFromUserRegion(isChinaUser: true);
     final downloadManager = manager(

@@ -245,7 +245,7 @@ void reviewSubStageTests() {
           container.read(learningSessionProvider.notifier)
               as TestLearningSession;
       await session.enterReviewDifficultPracticeMode(
-        'test-audio-1', createTestSentences(),
+        createTestAudioItem(), createTestSentences(),
       );
 
       final player =
@@ -293,7 +293,7 @@ void reviewSubStageTests() {
           container.read(learningSessionProvider.notifier)
               as TestLearningSession;
       await session.enterReviewDifficultPracticeMode(
-        'test-audio-1', createTestSentences(),
+        createTestAudioItem(), createTestSentences(),
       );
 
       final player =
