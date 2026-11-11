@@ -3,9 +3,9 @@
 > 原项目：https://github.com/echo-loop/Echo-Loop
 > 本 fork：https://github.com/E2E-AK-OI/Echo-Loop
 > 基线提交：`5df50638`（FIX: 百度网盘导入改为入队时整批获取 dlink，切后台后可接力下载）
-> 变更时间：2026-11-05 至 2026-11-06
+> 变更时间：2026-11-05 至 2026-11-11
 > 发布平台：Android
-> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；待 Android 真机验收。
+> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；2026-11-11 合并上游 v1.0.46 的 7 个非冲突提交，保留端侧优先与离线词典；待 Android 真机验收。
 
 ## 1. 变更总览
 
@@ -298,3 +298,23 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 6. 依赖包与部分旧接口代码尚未彻底清理；当前以「运行时不初始化、入口不可达」为边界。
 7. 全量测试仍有既有失败，详见第 8 节；这些失败不代表本 fork 新增功能回归。
 8. 百度网盘 OAuth 简化模式不支持刷新令牌，access token 约 30 天过期，用户需重新授权；用户需自行在百度网盘开放平台创建应用并填写 AppKey，个人应用默认限 10 个用户；2026-06-03 之后创建的应用受 `/apps/{appname}` 目录限制，可能无法浏览或下载该目录之外的文件。真机尚未验证百度登录、回调拦截与授权后目录浏览。
+
+## 11. 上游 v1.0.46 合并（2026-11-11）
+
+- 分叉基线：`5df50638`（上游 v1.0.45 之后）；目标版本：`v1.0.46` = `cf26dc43`。
+- 已合并 7 个提交：
+  1. `0101fb09`：查词自动发音在本地 TTS 模型缺失时静默跳过，不再弹下载提示；`promptIfModelMissing` 沿统一朗读入口透传，词典面板自动发音传 `false`，用户主动点喇叭行为不变。
+  2. `20f0b418`：单词发音改为「本地缓存 → CDN → TTS」，删除约 41MB 离线发音库与旧 `pronunciation_repository`；新增 `word_audio_identity` / `word_audio_repository`，升级迁移 v10 删除旧 `pronunciation` 目录。
+  3. `c6ba1922`：单词音频仓库补充缓存命中与下载完成日志。
+  4. `5a603c96`：意群生成或切换粒度时不再打断正在播放的整句。
+  5. `a4e7fc9b`：精听讲解页重听时工具栏不再提前显示播放图标。
+  6. `6cc7045e`：中国区模型 CDN 域名切换为 `static-cdn.echo-loop.cn`。
+  7. `cf26dc43`：模型 CDN 命名统一为静态资源 CDN（`staticCdn`），与 `static-cdn` 域名一致。
+- 未合并：
+  - `0e013a98` 会员 VIP 角标：fork 已移除订阅模块。
+  - `49854753` 在线词典：上游依赖自建后端 `/api/v1/dictionary/{dict}`，fork 保留本地 SQLite 离线词典。
+  - `04de0cfd` 强制所有用户默认 TTS 切换 Edge：与 fork 端侧优先、默认 Kokoro 冲突。
+  - Edge TTS 系列 `bbf916d3` / `cd7b9571` / `e0ffd6f1` / `b88297a5`：`flutter_edge_tts 0.0.3` 依赖 `audio_decode 1.3.5` 的原生资源钩子，在 Windows 构建机需要 MSVC C++ 工具链；关闭 native assets 又会让 `sqlite3` 无法运行。且 Edge 为在线 TTS，与端侧优先定位不符。
+  - `a422827e`：仅上游 `TASKS.md` 文档更新。
+- 适配：词典下载的 `modelCdnUri` 调用改为 `staticCdnUri`；`integration_test` 中旧 `TtsEngineKind.echoLoop` 改为 `kokoro`，复习集成测试改用 `createTestAudioItem()`。未新增依赖，默认 TTS 仍为 Kokoro。
+- 验证：`flutter analyze` 0 error（211 条既有 warning/info）；定向测试 102 + 226 项通过；全量 `flutter test` 为 5715 passed / 11 skipped / 23 failed，其中 `favorites_prewarm` 2 项与 `tts_cache_store` 1 项已在 `main` 基线复现，其余为既有 Windows/环境相关失败。
