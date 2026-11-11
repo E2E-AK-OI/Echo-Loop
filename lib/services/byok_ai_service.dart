@@ -1,7 +1,7 @@
 /// 通用 BYOK（Bring Your Own Key）AI 服务。
 ///
 /// 纯端侧模式下所有 AI 能力都直接访问用户配置的 OpenAI 兼容接口，不再经过
-/// 自建后端。供应商、Base URL、模型与温度复用 AI 口语设置，API Key 从安全
+/// 自建后端。供应商、Base URL、模型与温度复用 AI 设置，API Key 从安全
 /// 存储读取。
 library;
 

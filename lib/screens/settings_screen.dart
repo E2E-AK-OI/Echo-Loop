@@ -262,7 +262,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               context,
               'assets/icon/waveform.svg',
             ),
-            title: Text(l10n.aiSpeakingTitle),
+            title: Text(l10n.aiSpeakingSettingsTitle),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -324,7 +324,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// AI 口语入口摘要：展示当前供应商与模型，未配置时也能看到默认值。
+  /// AI 设置入口摘要：展示当前供应商与模型，未配置时也能看到默认值。
   String _aiSpeakingSummary(
     AppLocalizations l10n,
     AiSpeakingSettings settings,

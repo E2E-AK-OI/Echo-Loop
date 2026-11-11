@@ -218,9 +218,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Add your API keys in AI Speaking Settings first.'),
+      find.text('Add your API keys in AI Settings first.'),
       findsOneWidget,
     );
-    expect(find.text('AI Speaking Settings'), findsWidgets);
+    expect(find.text('AI Settings'), findsWidgets);
   });
 }

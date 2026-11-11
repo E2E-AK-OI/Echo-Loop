@@ -15,7 +15,7 @@ import '../providers/ai_speaking_session_controller.dart';
 import '../providers/ai_speaking_settings_provider.dart';
 import '../services/aliyun_tts_client.dart';
 
-/// AI 口语设置页：大模型与阿里云语音服务配置。
+/// AI 设置页：大模型与阿里云语音服务配置。
 class AiSpeakingSettingsScreen extends ConsumerStatefulWidget {
   const AiSpeakingSettingsScreen({super.key});
 

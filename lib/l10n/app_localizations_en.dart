@@ -4462,6 +4462,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Automatically show selected AI help when you enter sentence explanations';
 
   @override
+  String get autoShowAiExplanationConfigNote =>
+      'AI explanations and AI speaking practice share the provider, model, and API key in Settings › AI Settings. Changes there apply to both.';
+
+  @override
   String get autoShowAiAnalysisToggle => 'AI Analysis';
 
   @override
@@ -5852,7 +5856,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSpeakingConfirm => 'Confirm';
 
   @override
-  String get aiSpeakingSettingsTitle => 'AI Speaking Settings';
+  String get aiSpeakingSettingsTitle => 'AI Settings';
 
   @override
   String get aiSpeakingLlmSection => 'Large Language Model';
@@ -5930,7 +5934,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiSpeakingMissingConfig =>
-      'Add your API keys in AI Speaking Settings first.';
+      'Add your API keys in AI Settings first.';
 
   @override
   String get aiSpeakingNoSpeech =>

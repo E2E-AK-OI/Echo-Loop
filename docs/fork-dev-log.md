@@ -330,3 +330,13 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 - 真实网络验证：临时烟测脚本调用 `FlutterEdgeTts` 合成一句英文，返回 37,152 bytes 的 MP3（文件头 `FF F3 A4`），确认 Edge v2 Sec-MS-GEC 鉴权当前可用；临时脚本已删除。
 - 构建：系统 Gradle 9.4.1 与 `umeng_common_sdk` 的 `jcenter()` 不兼容，改用 Gradle 8.14.3。APK 114,033,746 bytes，SHA-256 `e2ec6407f69d25e274a8f2b5585935f4600fa4a4d3beaee7f4d52e612cb2e8b1`，APK Signature Scheme v2 通过，727 个条目；已覆盖 `android/app/release/app-dev-release.apk`。
 - 限制：Edge 使用微软「大声朗读」的非公开 WebSocket 端点，鉴权协议可能随服务端变化；首次合成需要联网，失败时会提示一次并可切换其他引擎；已合成文本命中本地缓存后可离线重播。上游默认 Edge 与强制迁移未采用，用户需在设置中主动选择。
+
+## 13. AI 设置统一入口（2026-11-11）
+
+- 背景：AI 讲解与 AI 口语练习共用同一套 BYOK 大模型配置（`ByokAiService` → `aiSpeakingSettingsProvider` + `aiSpeakingCredentialStoreProvider`），但设置页入口与设置页标题此前叫「AI 口语设置」，容易让用户误以为只影响口语练习；「学习设置 › 自动显示 AI 讲解」也没有说明配置来源。
+- 文案与入口：`aiSpeakingSettingsTitle` 改为「AI 设置」/「AI Settings」；`aiSpeakingMissingConfig` 改为「请先在 AI 设置中填写 API Key。」；设置页 AI 入口标题改用 `aiSpeakingSettingsTitle`，入口与页面统一为「AI 设置」。未调整任何供应商、模型、温度或调用链。
+- 学习设置说明：`lib/screens/learning_settings_screen.dart` 在「自动显示 AI 讲解」卡片底部新增始终可见的说明行（`Icons.info_outline` + `bodySmall` 小字），文案为 `autoShowAiExplanationConfigNote`：「AI 讲解与 AI 口语练习共用「设置 › AI 设置」中的供应商、模型与 API Key；在 AI 设置中修改后，两处都会生效。」说明不展开温度细节，避免把内部实现暴露给普通用户。
+- 测试：同步更新 `ai_speaking_screen_test.dart` 的标题与缺失 Key 断言；`learning_settings_screen_test.dart` 新增说明文案断言，并给受新增内容影响的新手引导用例设置高视口。定向 `flutter test test/screens/learning_settings_screen_test.dart test/features/ai_speaking/screens/ai_speaking_screen_test.dart test/screens/settings_screen_test.dart` 为 41 passed / 0 failed。
+- 回归：`flutter analyze` 213 issues、0 error（与 Edge 基线一致）；全量 `flutter test` 5734 passed / 11 skipped / 23 failed，失败集中在既有 Windows/环境相关套件，定向相关套件全部通过。
+- 构建：`:app:assembleDevRelease` 成功，APK 114,033,746 bytes，SHA-256 `6a6c8225da5beb8a049a56c0d851d5264facd38378011bb77b7c0dbccacff2c3`，v2 签名通过，727 条目 ZIP 校验无错误；已覆盖 `android/app/release/app-dev-release.apk`。
+- 限制：此次只改文案与说明，未改 AI 调用行为；AI 解析/意群/词典仍固定 0.2 温度，翻译仍使用设置温度。说明文案为静态文本，后续若默认温度策略变化需同步更新。

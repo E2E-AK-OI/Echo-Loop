@@ -4250,6 +4250,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoShowAiExplanationSubtitle => '进入句子讲解时自动显示选中的 AI 辅助内容';
 
   @override
+  String get autoShowAiExplanationConfigNote =>
+      'AI 讲解与 AI 口语练习共用「设置 › AI 设置」中的供应商、模型与 API Key；在 AI 设置中修改后，两处都会生效。';
+
+  @override
   String get autoShowAiAnalysisToggle => 'AI 解析';
 
   @override
@@ -5577,7 +5581,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSpeakingConfirm => '确认';
 
   @override
-  String get aiSpeakingSettingsTitle => 'AI 口语设置';
+  String get aiSpeakingSettingsTitle => 'AI 设置';
 
   @override
   String get aiSpeakingLlmSection => '大模型';
@@ -5653,7 +5657,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSpeakingOpenSettings => '打开系统设置';
 
   @override
-  String get aiSpeakingMissingConfig => '请先在 AI 口语设置中填写 API Key。';
+  String get aiSpeakingMissingConfig => '请先在 AI 设置中填写 API Key。';
 
   @override
   String get aiSpeakingNoSpeech => '没有识别到语音，请重试。';

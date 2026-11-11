@@ -99,6 +99,13 @@ void main() {
     expect(find.byIcon(Icons.psychology_alt_outlined), findsOneWidget);
     expect(find.byIcon(Icons.translate), findsOneWidget);
     expect(find.byIcon(Icons.account_tree_outlined), findsOneWidget);
+    expect(
+      find.text(
+        'AI explanations and AI speaking practice share the provider, model, '
+        'and API key in Settings › AI Settings. Changes there apply to both.',
+      ),
+      findsOneWidget,
+    );
 
     // 找到 "Auto-skip" label 所在的 SwitchListTile
     final autoSkipFinder = find.byWidgetPredicate(
@@ -340,6 +347,7 @@ void main() {
   });
 
   testWidgets('新手引导没有开关，整行是「重置」入口且无描述', (tester) async {
+    _useTallViewport(tester);
     await tester.pumpWidget(await buildApp());
     await tester.pumpAndSettle();
 

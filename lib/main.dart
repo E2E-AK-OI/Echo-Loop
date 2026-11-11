@@ -126,7 +126,7 @@ void main() async {
   // 避免异步 hydrate 前先用默认美音发声。
   final initialTtsSettings = TtsSettings.fromPrefsSync(prefs);
 
-  // AI 口语设置同步预读：进入练习页时无需等待异步 hydrate 即可展示已选供应商。
+  // AI 设置同步预读：进入练习页时无需等待异步 hydrate 即可展示已选供应商。
   final initialAiSpeakingSettings = AiSpeakingSettings.fromPrefsSync(prefs);
 
   // 各学习子阶段用户偏好(按槽位)同步预读:入口弹窗 / 播放器进入时需立即拿到记忆值。

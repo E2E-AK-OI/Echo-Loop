@@ -1,4 +1,4 @@
-/// AI 口语设置的状态管理与持久化。
+/// AI 设置的状态管理与持久化。
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

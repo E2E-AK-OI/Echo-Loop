@@ -7790,6 +7790,12 @@ abstract class AppLocalizations {
   /// **'Automatically show selected AI help when you enter sentence explanations'**
   String get autoShowAiExplanationSubtitle;
 
+  /// No description provided for @autoShowAiExplanationConfigNote.
+  ///
+  /// In en, this message translates to:
+  /// **'AI explanations and AI speaking practice share the provider, model, and API key in Settings › AI Settings. Changes there apply to both.'**
+  String get autoShowAiExplanationConfigNote;
+
   /// No description provided for @autoShowAiAnalysisToggle.
   ///
   /// In en, this message translates to:
@@ -10307,7 +10313,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiSpeakingSettingsTitle.
   ///
   /// In en, this message translates to:
-  /// **'AI Speaking Settings'**
+  /// **'AI Settings'**
   String get aiSpeakingSettingsTitle;
 
   /// No description provided for @aiSpeakingLlmSection.
@@ -10457,7 +10463,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiSpeakingMissingConfig.
   ///
   /// In en, this message translates to:
-  /// **'Add your API keys in AI Speaking Settings first.'**
+  /// **'Add your API keys in AI Settings first.'**
   String get aiSpeakingMissingConfig;
 
   /// No description provided for @aiSpeakingNoSpeech.

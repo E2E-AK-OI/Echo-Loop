@@ -1,4 +1,4 @@
-/// AI 口语设置模型与 Provider 单元测试。
+/// AI 设置模型与 Provider 单元测试。
 ///
 /// 覆盖：默认值、SharedPreferences 同步预读、边界值夹紧、供应商切换与持久化。
 library;
