@@ -105,9 +105,8 @@ void main() {
     ).thenAnswer((_) async {});
 
     when(() => player.stop()).thenAnswer((_) async {});
-    when(
-      () => player.playFile(any()),
-    ).thenAnswer((_) async => AudioPlaybackResult.completed);
+    when(() => player.playFile(any()))
+        .thenAnswer((_) async => AudioPlaybackResult.completed);
   });
 
   group('configure（惰性引擎）', () {
@@ -217,9 +216,8 @@ void main() {
   test('缓存文件被抢占时不降级实时朗读', () async {
     final c = build();
     await c.configure(TtsEngineKind.platform, _config);
-    when(
-      () => player.playFile(any()),
-    ).thenAnswer((_) async => AudioPlaybackResult.cancelled);
+    when(() => player.playFile(any()))
+        .thenAnswer((_) async => AudioPlaybackResult.cancelled);
 
     expect(await c.speak('hello'), isFalse);
     verifyNever(() => engine.speakLive(any()));
@@ -227,9 +225,8 @@ void main() {
 
   group('speak', () {
     test('缓存命中 → 不合成，直接播放缓存文件', () async {
-      when(
-        () => store.lookup(any()),
-      ).thenAnswer((_) async => File('/tmp/cached.wav'));
+      when(() => store.lookup(any()))
+          .thenAnswer((_) async => File('/tmp/cached.wav'));
 
       final c = build();
       await c.configure(TtsEngineKind.platform, _config);
@@ -252,9 +249,8 @@ void main() {
     test('缓存命中不等待正在初始化的引擎', () async {
       final initializing = Completer<void>();
       when(() => engine.initialize()).thenAnswer((_) => initializing.future);
-      when(
-        () => store.lookup(any()),
-      ).thenAnswer((_) async => File('/tmp/cached.wav'));
+      when(() => store.lookup(any()))
+          .thenAnswer((_) async => File('/tmp/cached.wav'));
 
       final c = build();
       await c.configure(TtsEngineKind.kokoro, _config);
@@ -721,9 +717,8 @@ void main() {
     });
 
     test('命中缓存 → 跳过合成（去重）', () async {
-      when(
-        () => store.lookup(any()),
-      ).thenAnswer((_) async => File('/tmp/cached.wav'));
+      when(() => store.lookup(any()))
+          .thenAnswer((_) async => File('/tmp/cached.wav'));
 
       final c = build();
       await c.configure(TtsEngineKind.kokoro, _config);
@@ -824,9 +819,8 @@ void main() {
     });
 
     test('命中缓存 → 跳过合成（与 speak 同源 key 即命中）', () async {
-      when(
-        () => store.lookup(any()),
-      ).thenAnswer((_) async => File('/tmp/cached.wav'));
+      when(() => store.lookup(any()))
+          .thenAnswer((_) async => File('/tmp/cached.wav'));
 
       final c = build();
       await c.configure(TtsEngineKind.kokoro, _config);
@@ -967,6 +961,102 @@ void main() {
       expect(r1, isFalse, reason: 'task1 播放被 task2 抢占');
       expect(r2, isTrue);
       verify(() => player.playFile('/tmp/out.wav')).called(1);
+    });
+
+    test('Edge 最多并行 3 路，第 4 条等空位', () async {
+      keyByText();
+      final (order, release) = gatedSynth();
+
+      final c = build();
+      await c.configure(TtsEngineKind.edge, _config);
+
+      final futures = [
+        for (final t in ['e1', 'e2', 'e3', 'e4'])
+          c.prewarm(t, TtsEngineKind.edge, _config),
+      ];
+      await pumpEventQueue();
+      expect(order, ['e1', 'e2', 'e3'], reason: '前 3 条同时合成');
+
+      release('e2');
+      await pumpEventQueue();
+      expect(order, ['e1', 'e2', 'e3', 'e4'], reason: '空出一路后启动第 4 条');
+
+      release('e1');
+      release('e3');
+      release('e4');
+      await Future.wait(futures);
+    });
+
+    test('本地引擎仍严格串行', () async {
+      keyByText();
+      final (order, release) = gatedSynth();
+
+      final c = build();
+      await c.configure(TtsEngineKind.kokoro, _config);
+
+      final fa = c.prewarm('A', TtsEngineKind.kokoro, _config);
+      final fb = c.prewarm('B', TtsEngineKind.kokoro, _config);
+      await pumpEventQueue();
+      expect(order, ['A']);
+
+      release('A');
+      await pumpEventQueue();
+      expect(order, ['A', 'B']);
+      release('B');
+      await Future.wait([fa, fb]);
+    });
+
+    test('用户点击排队中的预热 → 提升到其他预热之前', () async {
+      keyByText();
+      final (order, release) = gatedSynth();
+
+      final c = build();
+      await c.configure(TtsEngineKind.kokoro, _config);
+
+      final fa = c.prewarm('A', TtsEngineKind.kokoro, _config);
+      final fb = c.prewarm('B', TtsEngineKind.kokoro, _config);
+      final fc = c.prewarm('C', TtsEngineKind.kokoro, _config);
+      await pumpEventQueue();
+      expect(order, ['A']);
+
+      // 用户点击排在最后的 C：应跳过 B 先合成。
+      final fu = c.speakWith('C', TtsEngineKind.kokoro, _config);
+      await pumpEventQueue();
+
+      release('A');
+      await pumpEventQueue();
+      expect(order, ['A', 'C']);
+      release('C');
+      await pumpEventQueue();
+      expect(order, ['A', 'C', 'B']);
+      release('B');
+
+      expect(await fu, isTrue);
+      await Future.wait([fa, fb, fc]);
+    });
+
+    test('提升后的任务不会被「取消预热」丢弃', () async {
+      keyByText();
+      final (order, release) = gatedSynth();
+
+      final c = build();
+      await c.configure(TtsEngineKind.kokoro, _config);
+
+      final fa = c.prewarm('A', TtsEngineKind.kokoro, _config);
+      final fb = c.prewarm('B', TtsEngineKind.kokoro, _config);
+      await pumpEventQueue();
+      final fu = c.speakWith('B', TtsEngineKind.kokoro, _config);
+      await pumpEventQueue();
+
+      // 关闭词典：取消未开始的预热，但 B 已被用户点击，应继续合成并播放。
+      c.cancelPendingPrewarm();
+      release('A');
+      await pumpEventQueue();
+      expect(order, ['A', 'B']);
+      release('B');
+
+      expect(await fu, isTrue);
+      await Future.wait([fa, fb]);
     });
   });
 

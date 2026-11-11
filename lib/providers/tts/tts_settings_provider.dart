@@ -1,6 +1,6 @@
 /// 语音合成（TTS）设置 Provider
 ///
-/// 全局控制 TTS 发音偏好：合成引擎（平台 TTS / 未来 Echo Loop）与口音（美/英）。
+/// 全局控制 TTS 发音偏好：合成引擎（Edge 在线 / 平台 TTS / 本地 Kokoro、Piper）与口音（美/英）。
 /// 口音全局生效于所有发音场景（闪卡 / 收藏 / 词典单词 / 词典例句）。
 ///
 /// 采用手动 Notifier 模式（对齐 [LearningSettings]）：`build()` 从
@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/app_logger.dart';
+import '../../services/tts/edge_voices.dart';
 import '../../services/tts/kokoro_voices.dart';
 import '../../services/tts/piper_model_catalog.dart';
 import '../../services/tts/tts_engine.dart';
@@ -36,6 +37,8 @@ abstract final class TtsSettingsKeys {
   static const kokoroVariant = 'tts_kokoro_variant';
   static const piperVoiceUs = 'tts_piper_voice_us';
   static const piperVoiceUk = 'tts_piper_voice_uk';
+  static const edgeVoiceUs = 'tts_edge_voice_us';
+  static const edgeVoiceUk = 'tts_edge_voice_uk';
 }
 
 /// 将所有平台历史写入的 Echo Loop 产品名值迁移为 Kokoro 实现名。
@@ -83,6 +86,12 @@ class TtsSettings {
   /// Piper（平衡档）英音音色 id（默认 [piperDefaultVoiceUk]）。
   final String piperVoiceUk;
 
+  /// Edge 美音音色 id（默认 [edgeDefaultVoiceUs]）。
+  final String edgeVoiceUs;
+
+  /// Edge 英音音色 id（默认 [edgeDefaultVoiceUk]）。
+  final String edgeVoiceUk;
+
   const TtsSettings({
     this.engine = TtsEngineKind.kokoro,
     this.accent = TtsAccent.us,
@@ -91,6 +100,8 @@ class TtsSettings {
     this.kokoroVariant = KokoroModelVariant.fp32,
     this.piperVoiceUs = piperDefaultVoiceUs,
     this.piperVoiceUk = piperDefaultVoiceUk,
+    this.edgeVoiceUs = edgeDefaultVoiceUs,
+    this.edgeVoiceUk = edgeDefaultVoiceUk,
   });
 
   /// 当前口音对应的语言标签。
@@ -104,18 +115,26 @@ class TtsSettings {
   String get activePiperVoice =>
       accent == TtsAccent.uk ? piperVoiceUk : piperVoiceUs;
 
+  /// 当前口音下生效的 Edge 音色 id。
+  String get activeEdgeVoice =>
+      accent == TtsAccent.uk ? edgeVoiceUk : edgeVoiceUs;
+
+  /// 当前引擎下生效的音色 id；平台引擎无具名音色（用语言标签选系统音色）。
+  String? get activeVoiceName => switch (engine) {
+    TtsEngineKind.kokoro => activeKokoroVoice,
+    TtsEngineKind.piper => activePiperVoice,
+    TtsEngineKind.edge => activeEdgeVoice,
+    TtsEngineKind.platform => null,
+  };
+
   /// 派生引擎无关的发音配置。
   ///
   /// Echo Loop（Kokoro）带音色（voiceName）+ 变体标签（modelTag，fp32/int8 分桶）；
-  /// Piper 带音色（voiceName，即独立模型 id，缓存键据此分桶），无 modelTag；
+  /// Piper / Edge 带音色（voiceName，缓存键据此分桶），无 modelTag；
   /// 平台引擎不带 voiceName/modelTag（用语言标签选系统音色）。语速本期固定 0.45。
   TtsSpeechConfig toSpeechConfig() => TtsSpeechConfig(
     languageTag: languageTag,
-    voiceName: switch (engine) {
-      TtsEngineKind.kokoro => activeKokoroVoice,
-      TtsEngineKind.piper => activePiperVoice,
-      TtsEngineKind.platform => null,
-    },
+    voiceName: activeVoiceName,
     modelTag: engine == TtsEngineKind.kokoro ? kokoroVariant.name : null,
   );
 
@@ -143,7 +162,22 @@ class TtsSettings {
         prefs.getString(TtsSettingsKeys.piperVoiceUk),
         TtsAccent.uk,
       ),
+      edgeVoiceUs: _edgeVoiceOrDefault(
+        prefs.getString(TtsSettingsKeys.edgeVoiceUs),
+        TtsAccent.us,
+      ),
+      edgeVoiceUk: _edgeVoiceOrDefault(
+        prefs.getString(TtsSettingsKeys.edgeVoiceUk),
+        TtsAccent.uk,
+      ),
     );
+  }
+
+  /// 校验持久化的 Edge 音色 id 合法且口音匹配，否则回退该口音默认音色。
+  static String _edgeVoiceOrDefault(String? id, TtsAccent accent) {
+    final v = id == null ? null : edgeVoiceById(id);
+    if (v != null && v.accent == accent) return v.id;
+    return edgeDefaultVoice(accent).id;
   }
 
   /// 校验持久化的 Piper 音色 id 合法且口音匹配，否则回退该口音默认音色。
@@ -192,6 +226,8 @@ class TtsSettings {
     KokoroModelVariant? kokoroVariant,
     String? piperVoiceUs,
     String? piperVoiceUk,
+    String? edgeVoiceUs,
+    String? edgeVoiceUk,
   }) {
     return TtsSettings(
       engine: engine ?? this.engine,
@@ -201,6 +237,8 @@ class TtsSettings {
       kokoroVariant: kokoroVariant ?? this.kokoroVariant,
       piperVoiceUs: piperVoiceUs ?? this.piperVoiceUs,
       piperVoiceUk: piperVoiceUk ?? this.piperVoiceUk,
+      edgeVoiceUs: edgeVoiceUs ?? this.edgeVoiceUs,
+      edgeVoiceUk: edgeVoiceUk ?? this.edgeVoiceUk,
     );
   }
 
@@ -215,7 +253,9 @@ class TtsSettings {
           kokoroVoiceUk == other.kokoroVoiceUk &&
           kokoroVariant == other.kokoroVariant &&
           piperVoiceUs == other.piperVoiceUs &&
-          piperVoiceUk == other.piperVoiceUk;
+          piperVoiceUk == other.piperVoiceUk &&
+          edgeVoiceUs == other.edgeVoiceUs &&
+          edgeVoiceUk == other.edgeVoiceUk;
 
   @override
   int get hashCode => Object.hash(
@@ -226,6 +266,8 @@ class TtsSettings {
     kokoroVariant,
     piperVoiceUs,
     piperVoiceUk,
+    edgeVoiceUs,
+    edgeVoiceUk,
   );
 }
 
@@ -289,6 +331,23 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
       if (state.piperVoiceUs == voiceId) return;
       state = state.copyWith(piperVoiceUs: voiceId);
       await _persist(TtsSettingsKeys.piperVoiceUs, voiceId);
+    }
+  }
+
+  /// 设置指定口音的 Edge 音色，写 SP + 更新 state。
+  ///
+  /// [voiceId] 非法或与 [accent] 不匹配时忽略。
+  Future<void> setEdgeVoice(TtsAccent accent, String voiceId) async {
+    final v = edgeVoiceById(voiceId);
+    if (v == null || v.accent != accent) return;
+    if (accent == TtsAccent.uk) {
+      if (state.edgeVoiceUk == voiceId) return;
+      state = state.copyWith(edgeVoiceUk: voiceId);
+      await _persist(TtsSettingsKeys.edgeVoiceUk, voiceId);
+    } else {
+      if (state.edgeVoiceUs == voiceId) return;
+      state = state.copyWith(edgeVoiceUs: voiceId);
+      await _persist(TtsSettingsKeys.edgeVoiceUs, voiceId);
     }
   }
 

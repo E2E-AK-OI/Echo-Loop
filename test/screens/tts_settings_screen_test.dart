@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../helpers/mock_providers.dart';
 
 /// 平台语音引擎的显示名随宿主而变（见 [platformSpeechEngineName]）：
@@ -115,6 +116,35 @@ void main() {
     expect(find.textContaining('Best sound quality'), findsOneWidget);
     expect(find.text('High quality'), findsOneWidget);
     expect(find.text('Recommended'), findsOneWidget);
+    // Edge 作为可选项出现在引擎列表，但默认仍为 Echo Loop Advanced。
+    expect(find.text('Edge Online Voice'), findsOneWidget);
+    expect(find.text('Ava'), findsNothing);
+  });
+
+  testWidgets('切到 Edge → 显示音色列表；点音色写入对应口音', (tester) async {
+    // 加高视口让英音分组完整可见，避免点击依赖滚动；结束后恢复全局尺寸。
+    final originalSize = tester.view.physicalSize;
+    tester.view.physicalSize = Size(originalSize.width, 2000);
+    addTearDown(() => tester.view.physicalSize = originalSize);
+
+    await tester.pumpWidget(_wrap(const TtsSettings()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Edge Online Voice'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ava'), findsOneWidget);
+    expect(find.text('Sonia'), findsOneWidget);
+    expect(find.text('High quality'), findsNothing);
+
+    await tester.tap(find.text('Ryan'));
+    await tester.pump();
+
+    final settings = _containerOf(tester).read(ttsSettingsProvider);
+    expect(settings.engine, TtsEngineKind.edge);
+    expect(settings.accent, TtsAccent.uk);
+    expect(settings.edgeVoiceUk, 'en-GB-RyanNeural');
+    expect(settings.activeEdgeVoice, 'en-GB-RyanNeural');
   });
 
   test('Android 不显示系统语音入口，其他平台保留', () {

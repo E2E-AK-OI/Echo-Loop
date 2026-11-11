@@ -1,7 +1,7 @@
 # Echo Loop 项目规划
 
-> 最后更新：2026-11-11（合并上游 v1.0.46 的 7 个非冲突提交；Edge TTS、在线词典、VIP 角标未合并）
-> 当前焦点：端侧优先版本已完成回归与 Android APK 构建，待真机验收；上游 v1.0.46 的单词发音 CDN、查词静默发音、意群播放修复与 staticCdn 命名已合入；历史遗留 Android 离线 ASR 结束录音闪退仍待定位
+> 最后更新：2026-11-11（合并上游 v1.0.46 的 7 个非冲突提交，并补加 Edge 在线 TTS 可选引擎；在线词典、VIP 角标未合并）
+> 当前焦点：端侧优先版本已完成回归与 Android APK 构建，待真机验收；上游 v1.0.46 的单词发音 CDN、查词静默发音、意群播放修复与 staticCdn 命名已合入；Edge 在线 TTS 已作为可选项加入（默认仍为本地 Kokoro）；历史遗留 Android 离线 ASR 结束录音闪退仍待定位
 
 ## 产品目标
 
@@ -93,7 +93,7 @@ Echo Loop 是一个围绕“音频输入 + 句子级学习 + 间隔复习 + AI �
 ## 关键 ADR 索引
 
 - 媒体引擎与前台引擎分离：避免锁屏媒体会话与前台试听互相污染。
-- 统一 TTS 架构：合成 → 文件 → 缓存 → 播放，支持平台 TTS 与 Kokoro 本地 TTS。
+- 统一 TTS 架构：合成 → 文件 → 缓存 → 播放，支持平台 TTS、Kokoro 与 Piper 本地 TTS，以及 Edge 在线 TTS（可选，默认 Kokoro）。
 - 离线转录与本地模型：复用统一音频处理与模型下载能力。
 - 端侧优先与 BYOK：不设账号与订阅，AI 通过用户自填 Key 客户端直连；百度网盘 OAuth 使用应用内简化模式，不依赖自建后台；学习数据与凭据只存本机。
 - 通用记忆调度基础设施：以独立调度快照与只追加复习事件建模；上层依赖应用自有接口，FSRS 仅限 adapter 内部，按逐项固定 Profile 保障可迁移与可审计性（见 [memory-scheduler-infrastructure-plan.md](./docs/memory-scheduler-infrastructure-plan.md)）。

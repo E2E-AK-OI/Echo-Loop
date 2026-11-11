@@ -5,7 +5,7 @@
 > 基线提交：`5df50638`（FIX: 百度网盘导入改为入队时整批获取 dlink，切后台后可接力下载）
 > 变更时间：2026-11-05 至 2026-11-11
 > 发布平台：Android
-> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；2026-11-11 合并上游 v1.0.46 的 7 个非冲突提交，保留端侧优先与离线词典；待 Android 真机验收。
+> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；2026-11-11 合并上游 v1.0.46 的 7 个非冲突提交，并补加 Edge 在线 TTS 可选引擎（默认仍为 Kokoro），保留端侧优先与离线词典；待 Android 真机验收。
 
 ## 1. 变更总览
 
@@ -314,8 +314,19 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
   - `0e013a98` 会员 VIP 角标：fork 已移除订阅模块。
   - `49854753` 在线词典：上游依赖自建后端 `/api/v1/dictionary/{dict}`，fork 保留本地 SQLite 离线词典。
   - `04de0cfd` 强制所有用户默认 TTS 切换 Edge：与 fork 端侧优先、默认 Kokoro 冲突。
-  - Edge TTS 系列 `bbf916d3` / `cd7b9571` / `e0ffd6f1` / `b88297a5`：`flutter_edge_tts 0.0.3` 依赖 `audio_decode 1.3.5` 的原生资源钩子，在 Windows 构建机需要 MSVC C++ 工具链；关闭 native assets 又会让 `sqlite3` 无法运行。且 Edge 为在线 TTS，与端侧优先定位不符。
+  - Edge TTS 系列 `bbf916d3` / `cd7b9571` / `e0ffd6f1` / `b88297a5`：本次合并时因 `flutter_edge_tts 0.0.3` 依赖 `audio_decode 1.3.5` 的原生资源钩子，在 Windows 构建机需要 MSVC C++ 工具链；关闭 native assets 又会让 `sqlite3` 无法运行，故暂时跳过。后续已用本地纯 Dart 桩绕开原生构建，补加为可选引擎，见第 12 节。
   - `a422827e`：仅上游 `TASKS.md` 文档更新。
-- 适配：词典下载的 `modelCdnUri` 调用改为 `staticCdnUri`；`integration_test` 中旧 `TtsEngineKind.echoLoop` 改为 `kokoro`，复习集成测试改用 `createTestAudioItem()`。未新增依赖，默认 TTS 仍为 Kokoro。
+- 适配：词典下载的 `modelCdnUri` 调用改为 `staticCdnUri`；`integration_test` 中旧 `TtsEngineKind.echoLoop` 改为 `kokoro`，复习集成测试改用 `createTestAudioItem()`。该次合并不新增依赖，默认 TTS 仍为 Kokoro。
 - 验证：`flutter analyze` 0 error（211 条既有 warning/info）；定向测试 102 + 226 项通过；全量 `flutter test` 为 5715 passed / 11 skipped / 23 failed，其中 `favorites_prewarm` 2 项与 `tts_cache_store` 1 项已在 `main` 基线复现，其余为既有 Windows/环境相关失败。
 - 构建：`gradle -p android :app:assembleDevRelease` 成功，产物 `build/app/outputs/flutter-apk/app-dev-release.apk`（113,968,078 bytes，SHA-256 `cbaeddccff000a488356e5553731de3dacc68856b7270e2d58c09467a030be81`），APK Signature Scheme v2 通过，727 个条目 ZIP 完整性通过；已复制到 `android/app/release/app-dev-release.apk`。
+
+## 12. Edge 在线 TTS 可选引擎（2026-11-11）
+
+- 背景：上游 v1.0.46 增加 Edge 在线 TTS（`bbf916d3` / `cd7b9571` / `e0ffd6f1` / `b88297a5`）。fork 首次合并因 `flutter_edge_tts 0.0.3` 经 `audio_decode 1.3.5` 的原生资源钩子依赖本机 MSVC C++ 工具链而跳过。本次补加该能力，但保留 fork 端侧优先定位：**默认引擎仍为本地 Kokoro，Edge 仅作为可选在线引擎**，不采用上游 `04de0cfd` 的强制默认切换与 v10 默认迁移。
+- 依赖与构建隔离：`pubspec.yaml` 新增 `flutter_edge_tts: 0.0.3`；通过 `dependency_overrides` 将 `audio_decode` 指向 `third_party/audio_decode_stub`。该桩包仅提供 `PcmAudio` 与 `decodeMp3`（抛 `UnsupportedError`），满足编译依赖；项目只用 Edge 的 MP3 合成，不调用 WAV 导出。这样 `flutter test` / `dart run` 不触发 audio_decode 原生构建，Android APK 也不打包相关原生库。
+- 新增文件：`lib/services/tts/edge_tts_engine.dart`、`lib/services/tts/edge_voices.dart`、`lib/widgets/tts/edge_tts_unavailable_dialog.dart`。引擎实现 `TtsEngine`，连接超时 8 秒，失败重试一次；失败分为 network / service 两类，`speakLive=false`。精选 8 个 Neural 音色（美音 Ava/Emma/Andrew/Brian，英音 Sonia/Libby/Ryan/Thomas），默认 Ava / Sonia。
+- 管线接入：`TtsEngineKind` 增加 `edge`，新增 `requiresLocalModel` 判断；设置项 `tts_edge_voice_us` / `tts_edge_voice_uk`；设置页新增 Edge 选项与音色列表（无需下载，点击即选中并试听）；发音配置使用 `activeVoiceName`；协调器为 Edge 设置 20 秒基础超时 + 40ms/字符、上限 40 秒，最多 3 路并发，用户主动点击可提升排队中的预热任务；模型下载门控对 Edge 直接放行。未加入 Edge 默认引擎迁移，`_engineFromName` 未知值仍回退 Kokoro。
+- 测试：新增 `test/services/tts/edge_tts_engine_test.dart`（6 例）与 `test/providers/tts/tts_controller_edge_prompt_test.dart`（5 例），并扩展设置 Provider、协调器与设置页测试。定向测试 118 项通过；全量 `flutter test` 为 5726 passed / 11 skipped / 24 failed，失败均为既有 Windows/环境相关套件，无 Edge 新增失败。`flutter analyze` 0 error（213 条既有 warning/info；Edge 引擎新增 2 条 `prefer_initializing_formals` info，与 Kokoro/Piper 同类风格）。
+- 真实网络验证：临时烟测脚本调用 `FlutterEdgeTts` 合成一句英文，返回 37,152 bytes 的 MP3（文件头 `FF F3 A4`），确认 Edge v2 Sec-MS-GEC 鉴权当前可用；临时脚本已删除。
+- 构建：系统 Gradle 9.4.1 与 `umeng_common_sdk` 的 `jcenter()` 不兼容，改用 Gradle 8.14.3。APK 114,033,746 bytes，SHA-256 `e2ec6407f69d25e274a8f2b5585935f4600fa4a4d3beaee7f4d52e612cb2e8b1`，APK Signature Scheme v2 通过，727 个条目；已覆盖 `android/app/release/app-dev-release.apk`。
+- 限制：Edge 使用微软「大声朗读」的非公开 WebSocket 端点，鉴权协议可能随服务端变化；首次合成需要联网，失败时会提示一次并可切换其他引擎；已合成文本命中本地缓存后可离线重播。上游默认 Edge 与强制迁移未采用，用户需在设置中主动选择。

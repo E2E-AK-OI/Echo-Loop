@@ -126,6 +126,10 @@ dependencies:
   # 持久化文件日志：使用成熟的大小轮转输出，避免手写截断逻辑。
   logger: ^2.7.0
   window_manager: ^0.5.2
+  # Edge 在线 TTS（微软 Neural 音色，免下载模型）。依赖非公开的 Edge「大声朗读」端点，
+  # 协议变更可能需随包升级；包很新，锁定精确版本，仅在 edge_tts_engine.dart 引用。
+  # 注意：其 lib/src/utils/edge_tts_utils.dart 为 LGPL-3.0-or-later（其余 MIT）。
+  flutter_edge_tts: 0.0.3
 
 dev_dependencies:
   flutter_test:
@@ -156,6 +160,10 @@ dev_dependencies:
 dependency_overrides:
   charset_converter:
     path: third_party/charset_converter
+  # 纯 Dart 桩：上游 audio_decode 的 native assets 构建需要 MSVC，会阻断本机
+  # flutter test；本项目只用 flutter_edge_tts 的 MP3 合成，不需要其 WAV 解码。
+  audio_decode:
+    path: third_party/audio_decode_stub
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

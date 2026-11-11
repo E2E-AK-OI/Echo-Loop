@@ -5,11 +5,13 @@
 library;
 
 import 'package:echo_loop/providers/tts/tts_settings_provider.dart';
+import 'package:echo_loop/services/tts/edge_voices.dart';
 import 'package:echo_loop/services/tts/piper_model_catalog.dart';
 import 'package:echo_loop/services/tts/tts_engine.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../helpers/mock_providers.dart';
 
 void main() {
@@ -320,6 +322,48 @@ void main() {
       final s = TtsSettings.fromPrefsSync(prefs);
       expect(s.piperVoiceUs, piperDefaultVoiceUs);
       expect(s.piperVoiceUk, piperDefaultVoiceUk);
+    });
+  });
+
+  group('Edge 音色 / toSpeechConfig', () {
+    test('edge 引擎 → config 带当前口音音色、无 modelTag', () {
+      const us = TtsSettings(engine: TtsEngineKind.edge);
+      expect(us.toSpeechConfig().voiceName, edgeDefaultVoiceUs);
+      expect(us.toSpeechConfig().modelTag, isNull);
+      const uk = TtsSettings(engine: TtsEngineKind.edge, accent: TtsAccent.uk);
+      expect(uk.toSpeechConfig().voiceName, edgeDefaultVoiceUk);
+      expect(uk.toSpeechConfig().languageTag, 'en-GB');
+    });
+
+    test('setEdgeVoice 写对应口音字段 + SP；口音不匹配忽略', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final c = makeContainer(prefs);
+      addTearDown(c.dispose);
+      final notifier = c.read(ttsSettingsProvider.notifier);
+
+      final usAlt = edgeVoicesForAccent(TtsAccent.us).last.id;
+      final ukAlt = edgeVoicesForAccent(TtsAccent.uk).last.id;
+      await notifier.setEdgeVoice(TtsAccent.us, usAlt);
+      await notifier.setEdgeVoice(TtsAccent.uk, ukAlt);
+      // 美音槽传英音音色 → 忽略。
+      await notifier.setEdgeVoice(TtsAccent.us, ukAlt);
+
+      expect(c.read(ttsSettingsProvider).edgeVoiceUs, usAlt);
+      expect(c.read(ttsSettingsProvider).edgeVoiceUk, ukAlt);
+      expect(prefs.getString(TtsSettingsKeys.edgeVoiceUs), usAlt);
+      expect(prefs.getString(TtsSettingsKeys.edgeVoiceUk), ukAlt);
+    });
+
+    test('fromPrefsSync 非法/不匹配音色 → 回退该口音默认', () async {
+      SharedPreferences.setMockInitialValues({
+        TtsSettingsKeys.edgeVoiceUs: edgeDefaultVoiceUk,
+        TtsSettingsKeys.edgeVoiceUk: 'bogus',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final s = TtsSettings.fromPrefsSync(prefs);
+      expect(s.edgeVoiceUs, edgeDefaultVoiceUs);
+      expect(s.edgeVoiceUk, edgeDefaultVoiceUk);
     });
   });
 
