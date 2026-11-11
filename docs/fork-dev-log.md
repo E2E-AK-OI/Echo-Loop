@@ -266,22 +266,22 @@ AI 与内容入口收敛：
 ## 9. Android APK
 
 - 产物：`android/app/release/app-dev-release.apk`（由 `build/app/outputs/flutter-apk/app-dev-release.apk` 复制）
-- 大小：113,951,694 bytes
-- SHA-256：`b135a1fe08b13b4fbe7a2d1d61ec538bb936e662c4223a115205dbe02665962e`（2026-11-06 纯端侧 OAuth 改造后重新构建；上一版为 `df9610f30b0956f6c4af7d8c4bdc1cae99b2ff6f99a6ee169d963f63011c759b`）
+- 大小：113,968,078 bytes
+- SHA-256：`cbaeddccff000a488356e5553731de3dacc68856b7270e2d58c09467a030be81`（2026-11-11 合并上游 v1.0.46 后重新构建；上一版为 `b135a1fe08b13b4fbe7a2d1d61ec538bb936e662c4223a115205dbe02665962e`）
 - 包名：`app.echoloop.dev`
 - versionCode / versionName：`1` / `1.0`
 - minSdk / targetSdk：`24` / `36`
 - 签名：APK Signature Scheme v2 通过；1 个签名者
-- 压缩完整性：`unzip -t` 无错误
+- 压缩完整性：ZIP 完整性校验通过（727 个条目）
 - 构建命令：
 
 ```bash
 cd /e/Echo-Loop
-JAVA_HOME=/f/devtools/jdk/jdk-17 \
-GRADLE_USER_HOME=/f/devtools/gradle-home \
+JAVA_HOME=F:/devtools/jdk/jdk-17 \
+GRADLE_USER_HOME=F:/devtools/gradle-home \
 GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 /f/devtools/gradle/gradle-8.14.3/bin/gradle -p android :app:assembleDevRelease \
-  --max-workers=2 --no-daemon
+  --max-workers=2 --no-daemon -I /e/pin-runner.gradle
 ```
 
 - 本机构建补充：`:integration_test` 依赖动态版本 `androidx.test:runner:1.2+`，当前网络无法读取 Maven 动态版本元数据；本次用临时 Gradle init script 将版本固定为本地缓存已有的 `1.3.0` 后构建成功。该脚本仅用于本机构建，未提交到仓库；正常网络环境可直接使用上述命令。
@@ -318,3 +318,4 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
   - `a422827e`：仅上游 `TASKS.md` 文档更新。
 - 适配：词典下载的 `modelCdnUri` 调用改为 `staticCdnUri`；`integration_test` 中旧 `TtsEngineKind.echoLoop` 改为 `kokoro`，复习集成测试改用 `createTestAudioItem()`。未新增依赖，默认 TTS 仍为 Kokoro。
 - 验证：`flutter analyze` 0 error（211 条既有 warning/info）；定向测试 102 + 226 项通过；全量 `flutter test` 为 5715 passed / 11 skipped / 23 failed，其中 `favorites_prewarm` 2 项与 `tts_cache_store` 1 项已在 `main` 基线复现，其余为既有 Windows/环境相关失败。
+- 构建：`gradle -p android :app:assembleDevRelease` 成功，产物 `build/app/outputs/flutter-apk/app-dev-release.apk`（113,968,078 bytes，SHA-256 `cbaeddccff000a488356e5553731de3dacc68856b7270e2d58c09467a030be81`），APK Signature Scheme v2 通过，727 个条目 ZIP 完整性通过；已复制到 `android/app/release/app-dev-release.apk`。
