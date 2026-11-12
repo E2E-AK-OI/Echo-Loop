@@ -58,15 +58,33 @@ class AiSpeakingSettingsNotifier extends Notifier<AiSpeakingSettings> {
   }
 
   Future<void> setTtsModel(String model) async {
-    final normalized = model.trim();
-    state = state.copyWith(speech: state.speech.copyWith(ttsModel: normalized));
-    await _persistString(AiSpeakingSettingsKeys.ttsModel, normalized);
+    final normalizedModel = AiSpeechConfig.normalizeTtsModel(model.trim());
+    final previousVoice = state.speech.ttsVoice;
+    final resolvedVoice = AiSpeechConfig.resolveTtsVoice(
+      model: normalizedModel,
+      voice: previousVoice,
+    );
+    state = state.copyWith(
+      speech: state.speech.copyWith(
+        ttsModel: normalizedModel,
+        ttsVoice: resolvedVoice,
+      ),
+    );
+    await _persistString(AiSpeakingSettingsKeys.ttsModel, normalizedModel);
+    if (resolvedVoice != previousVoice) {
+      await _persistString(AiSpeakingSettingsKeys.ttsVoice, resolvedVoice);
+    }
   }
 
   Future<void> setTtsVoice(String voice) async {
-    final normalized = voice.trim();
-    state = state.copyWith(speech: state.speech.copyWith(ttsVoice: normalized));
-    await _persistString(AiSpeakingSettingsKeys.ttsVoice, normalized);
+    final resolvedVoice = AiSpeechConfig.resolveTtsVoice(
+      model: state.speech.ttsModel,
+      voice: voice.trim(),
+    );
+    state = state.copyWith(
+      speech: state.speech.copyWith(ttsVoice: resolvedVoice),
+    );
+    await _persistString(AiSpeakingSettingsKeys.ttsVoice, resolvedVoice);
   }
 
   Future<void> setTtsRate(double rate) async {

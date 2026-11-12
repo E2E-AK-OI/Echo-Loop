@@ -42,7 +42,7 @@ void main() {
       expect(settings.speech.workspaceId, isEmpty);
     });
 
-    test('读取已保存值并解析供应商', () async {
+    test('读取已保存值并修正不匹配的 flash 音色', () async {
       SharedPreferences.setMockInitialValues({
         AiSpeakingSettingsKeys.llmProvider: 'openAi',
         AiSpeakingSettingsKeys.llmBaseUrl: 'https://proxy.example/v1',
@@ -62,8 +62,8 @@ void main() {
       expect(settings.llm.baseUrl, 'https://proxy.example/v1');
       expect(settings.llm.model, 'gpt-4.1-mini');
       expect(settings.llm.temperature, 1.35);
-      expect(settings.speech.ttsModel, 'qwen-audio-3.1-tts-flash');
-      expect(settings.speech.ttsVoice, 'Bella');
+      expect(settings.speech.ttsModel, AiSpeechConfig.flashTtsModel);
+      expect(settings.speech.ttsVoice, AiSpeechConfig.defaultFlashTtsVoice);
       expect(settings.speech.ttsRate, 1.6);
       expect(settings.speech.autoPlay, isFalse);
       expect(settings.speech.workspaceId, 'ws-test');
@@ -99,6 +99,76 @@ void main() {
         'https://dashscope.aliyuncs.com/compatible-mode/v1',
       );
       expect(settings.llm.model, 'qwen-plus');
+    });
+  });
+
+  group('AiSpeechConfig 音色目录', () {
+    test('plus 提供官方四个旗舰音色', () {
+      final voices = AiSpeechConfig.voicesForModel(
+        AiSpeechConfig.defaultTtsModel,
+      );
+
+      expect(voices.map((voice) => voice.value), <String>[
+        'longanlingxin_v3.1',
+        'xunanchuan_v3.1',
+        'longanhuan_v3.1',
+        'longanfengyue_v3.1',
+      ]);
+    });
+
+    test('flash 提供官方十五个精品英文音色且不含 Bella', () {
+      final voices = AiSpeechConfig.voicesForModel(
+        AiSpeechConfig.flashTtsModel,
+      );
+      final values = voices.map((voice) => voice.value);
+
+      expect(voices, hasLength(15));
+      expect(values.first, AiSpeechConfig.defaultFlashTtsVoice);
+      expect(
+        values,
+        containsAll(<String>[
+          'Emily_v3.1',
+          'Luna_v3.1',
+          'Eric_v3.1',
+          'Luca_v3.1',
+          'Abby_v3.1',
+          'Annie_v3.1',
+          'Ava_v3.1',
+          'Beth_v3.1',
+          'Betty_v3.1',
+          'Cally_v3.1',
+          'Cindy_v3.1',
+          'Donna_v3.1',
+          'Andy_v3.1',
+          'Brian_v3.1',
+          'David_v3.1',
+        ]),
+      );
+      expect(values, isNot(contains('Bella')));
+    });
+
+    test('跨模型音色回退到目标模型默认音色', () {
+      expect(
+        AiSpeechConfig.resolveTtsVoice(
+          model: AiSpeechConfig.flashTtsModel,
+          voice: AiSpeechConfig.defaultTtsVoice,
+        ),
+        AiSpeechConfig.defaultFlashTtsVoice,
+      );
+      expect(
+        AiSpeechConfig.resolveTtsVoice(
+          model: AiSpeechConfig.defaultTtsModel,
+          voice: AiSpeechConfig.defaultFlashTtsVoice,
+        ),
+        AiSpeechConfig.defaultTtsVoice,
+      );
+      expect(
+        AiSpeechConfig.resolveTtsVoice(
+          model: AiSpeechConfig.flashTtsModel,
+          voice: 'Bella',
+        ),
+        AiSpeechConfig.defaultFlashTtsVoice,
+      );
     });
   });
 
@@ -144,16 +214,16 @@ void main() {
       final notifier = container.read(aiSpeakingSettingsProvider.notifier);
 
       await notifier.setTemperature(1.2);
-      await notifier.setTtsModel('qwen-audio-3.1-tts-flash');
-      await notifier.setTtsVoice('Bella');
+      await notifier.setTtsModel(AiSpeechConfig.flashTtsModel);
+      await notifier.setTtsVoice(AiSpeechConfig.defaultFlashTtsVoice);
       await notifier.setTtsRate(1.4);
       await notifier.setAutoPlay(false);
       await notifier.setWorkspaceId(' ws-1 ');
 
       final state = container.read(aiSpeakingSettingsProvider);
       expect(state.llm.temperature, 1.2);
-      expect(state.speech.ttsModel, 'qwen-audio-3.1-tts-flash');
-      expect(state.speech.ttsVoice, 'Bella');
+      expect(state.speech.ttsModel, AiSpeechConfig.flashTtsModel);
+      expect(state.speech.ttsVoice, AiSpeechConfig.defaultFlashTtsVoice);
       expect(state.speech.ttsRate, 1.4);
       expect(state.speech.autoPlay, isFalse);
       expect(state.speech.workspaceId, 'ws-1');
@@ -162,12 +232,40 @@ void main() {
       expect(prefs.getDouble(AiSpeakingSettingsKeys.llmTemperature), 1.2);
       expect(
         prefs.getString(AiSpeakingSettingsKeys.ttsModel),
-        'qwen-audio-3.1-tts-flash',
+        AiSpeechConfig.flashTtsModel,
       );
-      expect(prefs.getString(AiSpeakingSettingsKeys.ttsVoice), 'Bella');
+      expect(
+        prefs.getString(AiSpeakingSettingsKeys.ttsVoice),
+        AiSpeechConfig.defaultFlashTtsVoice,
+      );
       expect(prefs.getDouble(AiSpeakingSettingsKeys.ttsRate), 1.4);
       expect(prefs.getBool(AiSpeakingSettingsKeys.ttsAutoPlay), isFalse);
       expect(prefs.getString(AiSpeakingSettingsKeys.workspaceId), 'ws-1');
+    });
+
+    test('切换到 flash 时自动替换不匹配音色并持久化', () async {
+      SharedPreferences.setMockInitialValues({});
+      final container = makeContainer(AiSpeakingSettings.defaults);
+      final notifier = container.read(aiSpeakingSettingsProvider.notifier);
+
+      await notifier.setTtsModel(AiSpeechConfig.flashTtsModel);
+
+      expect(
+        container.read(aiSpeakingSettingsProvider).speech.ttsVoice,
+        AiSpeechConfig.defaultFlashTtsVoice,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString(AiSpeakingSettingsKeys.ttsVoice),
+        AiSpeechConfig.defaultFlashTtsVoice,
+      );
+
+      await notifier.setTtsVoice('Bella');
+
+      expect(
+        container.read(aiSpeakingSettingsProvider).speech.ttsVoice,
+        AiSpeechConfig.defaultFlashTtsVoice,
+      );
     });
 
     test('温度与语速越过边界时夹紧后持久化', () async {

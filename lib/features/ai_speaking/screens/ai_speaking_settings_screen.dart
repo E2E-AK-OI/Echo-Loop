@@ -28,10 +28,8 @@ class _AiSpeakingSettingsScreenState
     extends ConsumerState<AiSpeakingSettingsScreen> {
   static const _ttsModels = <String>[
     AiSpeechConfig.defaultTtsModel,
-    'qwen-audio-3.1-tts-flash',
+    AiSpeechConfig.flashTtsModel,
   ];
-  static const _plusVoices = <String>[AiSpeechConfig.defaultTtsVoice];
-  static const _flashVoices = <String>['Bella', 'Emily'];
 
   late final TextEditingController _baseUrlController;
   late final TextEditingController _modelController;
@@ -199,6 +197,13 @@ class _AiSpeakingSettingsScreenState
     final settings = ref.watch(aiSpeakingSettingsProvider);
     final secretStatus = ref.watch(aiSpeakingSecretStatusProvider).value;
     final isCustom = settings.llm.provider.isCustom;
+    final voiceOptions = AiSpeechConfig.voicesForModel(
+      settings.speech.ttsModel,
+    );
+    final selectedVoice = AiSpeechConfig.resolveTtsVoice(
+      model: settings.speech.ttsModel,
+      voice: settings.speech.ttsVoice,
+    );
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.aiSpeakingSettingsTitle)),
@@ -417,16 +422,9 @@ class _AiSpeakingSettingsScreenState
                         .toList(),
                     onChanged: (model) {
                       if (model == null) return;
-                      final voices = model == AiSpeechConfig.defaultTtsModel
-                          ? _plusVoices
-                          : _flashVoices;
-                      final notifier = ref.read(
-                        aiSpeakingSettingsProvider.notifier,
-                      );
-                      notifier.setTtsModel(model);
-                      if (!voices.contains(settings.speech.ttsVoice)) {
-                        notifier.setTtsVoice(voices.first);
-                      }
+                      ref
+                          .read(aiSpeakingSettingsProvider.notifier)
+                          .setTtsModel(model);
                     },
                   ),
                 ),
@@ -435,17 +433,16 @@ class _AiSpeakingSettingsScreenState
                 label: l10n.aiSpeakingVoiceLabel,
                 child: _dropdownContainer(
                   child: AppDropdown<String>(
-                    value:
-                        _voiceOptions(settings.speech.ttsModel)
-                            .contains(settings.speech.ttsVoice)
-                        ? settings.speech.ttsVoice
-                        : _voiceOptions(settings.speech.ttsModel).first,
+                    value: selectedVoice,
                     isExpanded: true,
-                    items: _voiceOptions(settings.speech.ttsModel)
+                    items: voiceOptions
                         .map(
                           (voice) => DropdownMenuItem<String>(
-                            value: voice,
-                            child: Text(voice),
+                            value: voice.value,
+                            child: Text(
+                              '${voice.label} (${voice.value})',
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
@@ -552,12 +549,6 @@ class _AiSpeakingSettingsScreenState
         },
       ),
     );
-  }
-
-  List<String> _voiceOptions(String ttsModel) {
-    return ttsModel == AiSpeechConfig.defaultTtsModel
-        ? _plusVoices
-        : _flashVoices;
   }
 
   Widget _dropdownContainer({required Widget child}) {

@@ -3,9 +3,9 @@
 > 原项目：https://github.com/echo-loop/Echo-Loop
 > 本 fork：https://github.com/E2E-AK-OI/Echo-Loop
 > 基线提交：`5df50638`（FIX: 百度网盘导入改为入队时整批获取 dlink，切后台后可接力下载）
-> 变更时间：2026-11-05 至 2026-11-11
+> 变更时间：2026-11-05 至 2026-11-12
 > 发布平台：Android
-> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；2026-11-11 合并上游 v1.0.46 的 7 个非冲突提交，并补加 Edge 在线 TTS 可选引擎（默认仍为 Kokoro），保留端侧优先与离线词典；待 Android 真机验收。
+> 当前状态：代码与文档已完成；静态分析 0 error；定向测试通过；2026-11-06 修复“从网盘导入”入口，并将百度网盘 OAuth 改为纯端侧简化模式，移除最后一个后端依赖；2026-11-11 合并上游 v1.0.46 的 7 个非冲突提交，并补加 Edge 在线 TTS 可选引擎（默认仍为 Kokoro）；2026-11-12 修复 AI 口语第二轮录音与 Qwen TTS flash 音色选择；保留端侧优先与离线词典，待 Android 真机验收。
 
 ## 1. 变更总览
 
@@ -340,3 +340,20 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 - 回归：`flutter analyze` 213 issues、0 error（与 Edge 基线一致）；全量 `flutter test` 5734 passed / 11 skipped / 23 failed，失败集中在既有 Windows/环境相关套件，定向相关套件全部通过。
 - 构建：`:app:assembleDevRelease` 成功，APK 114,033,746 bytes，SHA-256 `6a6c8225da5beb8a049a56c0d851d5264facd38378011bb77b7c0dbccacff2c3`，v2 签名通过，727 条目 ZIP 校验无错误；已覆盖 `android/app/release/app-dev-release.apk`。
 - 限制：此次只改文案与说明，未改 AI 调用行为；AI 解析/意群/词典仍固定 0.2 温度，翻译仍使用设置温度。说明文案为静态文本，后续若默认温度策略变化需同步更新。
+
+## 14. 2026-11-12 稳定性修复
+
+### 14.1 AI 口语第二轮点话筒无反应
+
+- 现象：第一轮语音输入与 AI 回复的 TTS 均正常；第二次点右下角话筒没有反应，无法进入录音。
+- 根因：`pcmRecorderProvider` 返回单例 `RecordPcmRecorder`，而 `_cleanupAsr()` 每轮结束都对其 `dispose()`。`record 6.2.1` 的 `AudioRecorder.dispose()` 会通知 Android 原生侧移除 recorder；第二轮 `startStream()` 报 `Recorder has not yet been created or has already been disposed.`，被 catch 后进入 `asrFailed`。
+- 修复：录音器生命周期交给 provider（`ref.onDispose` 时释放），每轮只 `stop()` 不 `dispose()`；启动失败分支也只尝试 `stop()`。新增「连续两轮语音输入都能重新开始录音」回归测试。
+
+### 14.2 Qwen TTS 切换 flash 后音色非法
+
+- 现象：AI 设置中 `qwen-audio-3.1-tts-plus` + `longanlingxin_v3.1` 合成正常；切到 `qwen-audio-3.1-tts-flash` 后默认音色为 `Bella`，下拉框还有 `Emily`，合成报「语音合成请求参数有误」。
+- 根因：旧实现把 flash 音色写死为 `['Bella', 'Emily']`，缺少 DashScope 要求的 `_v3.1` 后缀；`Bella` 实际属于精品中文音色（voice 参数 `loongbella_v3.1`），flash 没有该音色。切模型时还把 `voices.first` 写回，导致 `model=flash` + `voice=Bella` 被 `InvalidParameter` 拒绝。
+- 修复：按官方文档改为模型级音色目录——plus 4 个旗舰音色（`longanlingxin_v3.1` / `xunanchuan_v3.1` / `longanhuan_v3.1` / `longanfengyue_v3.1`）；flash 15 个精品英文音色（`Emily_v3.1` / `Luna_v3.1` / `Eric_v3.1` / `Luca_v3.1` / `Abby_v3.1` / `Annie_v3.1` / `Ava_v3.1` / `Beth_v3.1` / `Betty_v3.1` / `Cally_v3.1` / `Cindy_v3.1` / `Donna_v3.1` / `Andy_v3.1` / `Brian_v3.1` / `David_v3.1`）。新增 `AiTtsVoice`、`normalizeTtsModel`、`voicesForModel`、`resolveTtsVoice`；`fromPrefsSync` / `setTtsModel` / `setTtsVoice` 统一校验，历史 `flash+Bella` 自动迁移为 `flash+Emily_v3.1`；设置页下拉展示「中文名 (voice 参数)」，切换模型由 notifier 原子更新模型与音色并持久化。
+- 验证：定向测试 16 passed，`test/features/ai_speaking` 48 passed；全量 `flutter test` 5739 passed / 11 skipped / 23 failed（均既有 Windows/环境相关失败）；`flutter analyze` 0 error（213 issues，10 warning / 203 info），改动文件无 issue；`dart format` 0 changed。
+- 构建：APK 114,033,746 bytes，SHA-256 `2b18b2c242e48340edb90373ab781a84de62d755dbb9799b5af4f00d288df972`，APK Signature Scheme v2 通过，727 条目 ZIP 校验通过；已覆盖 `android/app/release/app-dev-release.apk`。
+- 限制：未在 Android 真机上实际调用 flash 音色试听；音色表以 2026-10-29 官方文档为准，后续文档更新需同步。

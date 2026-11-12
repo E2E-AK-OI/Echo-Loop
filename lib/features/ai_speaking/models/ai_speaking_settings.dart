@@ -72,6 +72,14 @@ class AiLlmConfig {
   int get hashCode => Object.hash(provider, baseUrl, model, temperature);
 }
 
+/// TTS 音色选项：label 用于界面展示，value 是 DashScope 的 voice 参数。
+class AiTtsVoice {
+  const AiTtsVoice({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
 /// 语音服务配置。
 class AiSpeechConfig {
   const AiSpeechConfig({
@@ -85,7 +93,61 @@ class AiSpeechConfig {
 
   static const defaultAsrModel = 'qwen-audio-3.1-asr-flash-streaming';
   static const defaultTtsModel = 'qwen-audio-3.1-tts-plus';
+  static const flashTtsModel = 'qwen-audio-3.1-tts-flash';
   static const defaultTtsVoice = 'longanlingxin_v3.1';
+  static const defaultFlashTtsVoice = 'Emily_v3.1';
+
+  /// 音色必须与模型匹配，跨模型使用会被 DashScope 拒绝。
+  /// 来源：https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list
+  static const _plusVoices = <AiTtsVoice>[
+    AiTtsVoice(label: '龙安灵心', value: defaultTtsVoice),
+    AiTtsVoice(label: '许南川', value: 'xunanchuan_v3.1'),
+    AiTtsVoice(label: '龙安欢', value: 'longanhuan_v3.1'),
+    AiTtsVoice(label: '龙安风悦', value: 'longanfengyue_v3.1'),
+  ];
+
+  /// flash 的“精品英文音色”共 15 个，是英语口语练习的主要候选。
+  static const _flashEnglishVoices = <AiTtsVoice>[
+    AiTtsVoice(label: 'Emily', value: defaultFlashTtsVoice),
+    AiTtsVoice(label: 'Luna', value: 'Luna_v3.1'),
+    AiTtsVoice(label: 'Eric', value: 'Eric_v3.1'),
+    AiTtsVoice(label: 'Luca', value: 'Luca_v3.1'),
+    AiTtsVoice(label: 'Abby', value: 'Abby_v3.1'),
+    AiTtsVoice(label: 'Annie', value: 'Annie_v3.1'),
+    AiTtsVoice(label: 'Ava', value: 'Ava_v3.1'),
+    AiTtsVoice(label: 'Beth', value: 'Beth_v3.1'),
+    AiTtsVoice(label: 'Betty', value: 'Betty_v3.1'),
+    AiTtsVoice(label: 'Cally', value: 'Cally_v3.1'),
+    AiTtsVoice(label: 'Cindy', value: 'Cindy_v3.1'),
+    AiTtsVoice(label: 'Donna', value: 'Donna_v3.1'),
+    AiTtsVoice(label: 'Andy', value: 'Andy_v3.1'),
+    AiTtsVoice(label: 'Brian', value: 'Brian_v3.1'),
+    AiTtsVoice(label: 'David', value: 'David_v3.1'),
+  ];
+
+  /// 当前支持的 TTS 模型，未知模型统一回退到 plus。
+  static String normalizeTtsModel(String model) {
+    return model == flashTtsModel ? flashTtsModel : defaultTtsModel;
+  }
+
+  /// 返回模型可用的音色；未知模型按 plus 处理，保证下拉始终有选项。
+  static List<AiTtsVoice> voicesForModel(String model) {
+    return normalizeTtsModel(model) == flashTtsModel
+        ? _flashEnglishVoices
+        : _plusVoices;
+  }
+
+  /// 将历史设置中跨模型或旧版本遗留的非法音色修正为当前模型的默认音色。
+  static String resolveTtsVoice({
+    required String model,
+    required String voice,
+  }) {
+    final voices = voicesForModel(model);
+    for (final option in voices) {
+      if (option.value == voice) return voice;
+    }
+    return voices.first.value;
+  }
 
   final String asrModel;
   final String ttsModel;
@@ -175,6 +237,15 @@ class AiSpeakingSettings {
         prefs.getString(AiSpeakingSettingsKeys.ttsModel)?.trim() ?? '';
     final storedTtsVoice =
         prefs.getString(AiSpeakingSettingsKeys.ttsVoice)?.trim() ?? '';
+    final ttsModel = AiSpeechConfig.normalizeTtsModel(
+      storedTtsModel.isEmpty ? AiSpeechConfig.defaultTtsModel : storedTtsModel,
+    );
+    final ttsVoice = AiSpeechConfig.resolveTtsVoice(
+      model: ttsModel,
+      voice: storedTtsVoice.isEmpty
+          ? AiSpeechConfig.defaultTtsVoice
+          : storedTtsVoice,
+    );
 
     return AiSpeakingSettings(
       llm: AiLlmConfig(
@@ -185,12 +256,8 @@ class AiSpeakingSettings {
       ),
       speech: AiSpeechConfig(
         asrModel: AiSpeechConfig.defaultAsrModel,
-        ttsModel: storedTtsModel.isEmpty
-            ? AiSpeechConfig.defaultTtsModel
-            : storedTtsModel,
-        ttsVoice: storedTtsVoice.isEmpty
-            ? AiSpeechConfig.defaultTtsVoice
-            : storedTtsVoice,
+        ttsModel: ttsModel,
+        ttsVoice: ttsVoice,
         ttsRate: rawTtsRate.clamp(0.5, 2.0).toDouble(),
         autoPlay: prefs.getBool(AiSpeakingSettingsKeys.ttsAutoPlay) ?? true,
         workspaceId:

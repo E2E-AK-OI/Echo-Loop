@@ -342,3 +342,12 @@
 - 规则：**能被多轮流程复用的平台资源（录音器、播放器、通道）不要在每个业务轮次 dispose；dispose 只放在 provider/页面所有者的生命周期收尾**。每轮只做 stop/reset，否则第二轮必然拿到已释放的原生句柄。
 - 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`（`pcmRecorderProvider`、`startListening()`、`_cleanupAsr()`）；测试 `test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`（`_SingleUsePcmRecorder`、`连续两轮语音输入都能重新开始录音`）。
 - 修复时间：2026-11-12。
+
+### 7.48 Qwen TTS 切换 flash 后合成报「语音合成请求参数有误」：音色必须与模型匹配
+
+- 现象：AI 设置中 `qwen-audio-3.1-tts-plus` + `longanlingxin_v3.1` 合成正常；切换到 `qwen-audio-3.1-tts-flash` 后，默认音色为 `Bella`，下拉框还有 `Emily`，合成请求返回「语音合成请求参数有误」。
+- 根因：旧实现把 flash 音色写死为 `['Bella', 'Emily']`，既缺少 DashScope 要求的 `_v3.1` 后缀，`Bella` 也不是 flash 的精品英文音色——`Bella_v3.1` 属于精品中文音色，其 voice 参数是 `loongbella_v3.1`。切模型时还把 `voices.first` 写回设置，导致 `model=qwen-audio-3.1-tts-flash` 与 `voice=Bella` 一起提交，DashScope 以 `InvalidParameter` 拒绝。
+- 解法：按官方文档把音色收敛为模型级目录：plus 提供 4 个旗舰音色（龙安灵心/许南川/龙安欢/龙安风悦）；flash 提供「精品英文音色」15 个（Emily、Luna、Eric、Luca、Abby、Annie、Ava、Beth、Betty、Cally、Cindy、Donna、Andy、Brian、David，均带 `_v3.1`）。新增 `AiSpeechConfig.normalizeTtsModel`（只保留 flash，其余回退 plus）、`voicesForModel`（返回对应目录）与 `resolveTtsVoice`（校验当前音色，非法时回退该模型首个）。`fromPrefsSync`、`setTtsModel`、`setTtsVoice` 统一走校验：历史 flash+Bella 自动迁移为 flash+`Emily_v3.1`；切换模型时同步修正音色并持久化。设置页下拉展示「中文名 (voice 参数)」，切换模型只调用 `setTtsModel`，由 notifier 完成模型与音色的原子更新。
+- 规则：DashScope Qwen TTS 的 `voice` 必须属于当前 `model`，不能跨模型复用；模型切换时音色选择与持久化必须原子完成，不能只改 model 留下旧 voice。
+- 相关代码：`lib/features/ai_speaking/models/ai_speaking_settings.dart`（`AiTtsVoice`/`voicesForModel`/`resolveTtsVoice`）、`lib/features/ai_speaking/providers/ai_speaking_settings_provider.dart`（`setTtsModel`/`setTtsVoice`）、`lib/features/ai_speaking/screens/ai_speaking_settings_screen.dart`；测试 `test/features/ai_speaking/models/ai_speaking_settings_test.dart`（音色目录、跨模型回退、切换持久化）。
+- 修复时间：2026-11-12。
