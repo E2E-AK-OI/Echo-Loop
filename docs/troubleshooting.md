@@ -361,3 +361,21 @@
 - 规则：绕过 Flutter 工具直接调 Gradle 打包时，版本号等 `flutter.*` 属性要自己保证；验收以 `aapt2 dump badging` 为准，不能只看 `build.gradle` 里引用的变量名。
 - 相关文件：`android/app/build.gradle`（`versionCode = flutter.versionCode`、`versionName = flutter.versionName`）、`android/local.properties`。
 - 记录时间：2026-11-12。
+
+### 7.50 新增语音事件要贯通解析、转发与两处穷举 switch，并让两端原生都发送
+
+- 现象：为录音电平新增 `SpeechPracticeEventType.audioLevel` 后，若只改平台解析层，`recording_service.dart` 不会把事件交给上层；`retell_recording_controller_provider.dart` 与 `speech/speech_recording_controller.dart` 的穷举 switch 会直接编译失败（missing case）。只改 Dart 侧则永远收不到电平，因为 Android/iOS 原生从未发送该事件。
+- 根因：语音事件在 Dart 侧有四道关卡——平台事件名解析（`speech_practice_platform.dart` 的 `_parseEvent`）、`RecordingService._handleEvent` 的白名单转发、两处控制器的穷举 switch；原生侧还各自有独立的 VAD 回调与 `emitEvent`。
+- 解法：新增事件时按同一顺序补齐：① 原生在 VAD 回调里按约 80ms 节流发送 `{type, promptId, audioLevel}`（RMS 0..1）；② 平台解析 switch 增加事件名并解析数值字段；③ `RecordingService` 转发 switch 增加该类型；④ 两处控制器的穷举 switch 增加忽略分支。字段名、取值范围与节流间隔在两端保持一致。
+- 规则：**跨端事件模型是契约，不是单侧实现**；新增/重命名事件必须同时检查 Dart 解析、转发、所有穷举 switch 与 Android/iOS 发送端，缺一处就表现为「有动画没数据」或编译失败。
+- 相关代码：`lib/models/speech_practice_models.dart`、`lib/services/speech_practice_platform.dart`、`lib/services/recording_service.dart`、`lib/providers/retell_recording_controller_provider.dart`、`lib/providers/speech/speech_recording_controller.dart`、`android/app/src/main/kotlin/app/echoloop/AndroidSpeechPracticeHandler.kt`、`ios/Runner/AppDelegate.swift`。
+- 记录时间：2026-11-12。
+
+### 7.51 在既有函数里新增 `now` 局部变量会让 Kotlin/Swift 编译失败
+
+- 现象：为电平节流在 `handleVoiceActivity` 开头新增 `val now = SystemClock.elapsedRealtime()`（Kotlin）与 `let now = Date().timeIntervalSince1970`（Swift），构建报 `Conflicting declarations: local val now: Long`；Swift 同样不允许同一作用域重复声明 `now`。
+- 根因：该函数后半段已用 `now` 表示静音计时时间戳；Dart 允许内层遮蔽或同作用域重名在不同分支，Kotlin/Swift 不允许同作用域重复声明，且两端都编译失败在打包阶段才暴露。
+- 解法：节流时间戳改用独立名字 `levelNowMs`（Kotlin）/ `levelNow`（Swift），静音逻辑保持原变量不变。
+- 规则：向已有原生函数插入局部变量前先搜索同名标识符；时间戳、计数这类通用名在长函数里尤其容易撞名。改完两端都要实际编译（Android 走 Gradle，iOS 至少做语法检查），不能只依赖 Dart 侧 analyze。
+- 相关文件：`android/app/src/main/kotlin/app/echoloop/AndroidSpeechPracticeHandler.kt`、`ios/Runner/AppDelegate.swift`。
+- 记录时间：2026-11-12。

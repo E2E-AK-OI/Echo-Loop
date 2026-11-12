@@ -34,6 +34,7 @@ void main() {
       expect(settings.llm.baseUrl, 'https://api.deepseek.com/v1');
       expect(settings.llm.model, 'deepseek-chat');
       expect(settings.llm.temperature, 0.7);
+      expect(settings.llm.reasoningEffort, AiReasoningEffort.none);
       expect(settings.speech.asrModel, AiSpeechConfig.defaultAsrModel);
       expect(settings.speech.ttsModel, AiSpeechConfig.defaultTtsModel);
       expect(settings.speech.ttsVoice, AiSpeechConfig.defaultTtsVoice);
@@ -48,6 +49,7 @@ void main() {
         AiSpeakingSettingsKeys.llmBaseUrl: 'https://proxy.example/v1',
         AiSpeakingSettingsKeys.llmModel: 'gpt-4.1-mini',
         AiSpeakingSettingsKeys.llmTemperature: 1.35,
+        AiSpeakingSettingsKeys.llmReasoningEffort: 'high',
         AiSpeakingSettingsKeys.ttsModel: 'qwen-audio-3.1-tts-flash',
         AiSpeakingSettingsKeys.ttsVoice: 'Bella',
         AiSpeakingSettingsKeys.ttsRate: 1.6,
@@ -62,6 +64,7 @@ void main() {
       expect(settings.llm.baseUrl, 'https://proxy.example/v1');
       expect(settings.llm.model, 'gpt-4.1-mini');
       expect(settings.llm.temperature, 1.35);
+      expect(settings.llm.reasoningEffort, AiReasoningEffort.high);
       expect(settings.speech.ttsModel, AiSpeechConfig.flashTtsModel);
       expect(settings.speech.ttsVoice, AiSpeechConfig.defaultFlashTtsVoice);
       expect(settings.speech.ttsRate, 1.6);
@@ -73,6 +76,7 @@ void main() {
       SharedPreferences.setMockInitialValues({
         AiSpeakingSettingsKeys.llmProvider: 'not-a-provider',
         AiSpeakingSettingsKeys.llmTemperature: 9.0,
+        AiSpeakingSettingsKeys.llmReasoningEffort: 'ultra',
         AiSpeakingSettingsKeys.ttsRate: 0.1,
       });
       final prefs = await SharedPreferences.getInstance();
@@ -81,6 +85,7 @@ void main() {
 
       expect(settings.llm.provider, AiLlmProvider.deepSeek);
       expect(settings.llm.temperature, 2.0);
+      expect(settings.llm.reasoningEffort, AiReasoningEffort.none);
       expect(settings.speech.ttsRate, 0.5);
     });
 
@@ -253,6 +258,7 @@ void main() {
       final notifier = container.read(aiSpeakingSettingsProvider.notifier);
 
       await notifier.setTemperature(1.2);
+      await notifier.setReasoningEffort(AiReasoningEffort.medium);
       await notifier.setTtsModel(AiSpeechConfig.flashTtsModel);
       await notifier.setTtsVoice(AiSpeechConfig.defaultFlashTtsVoice);
       await notifier.setTtsRate(1.4);
@@ -261,6 +267,7 @@ void main() {
 
       final state = container.read(aiSpeakingSettingsProvider);
       expect(state.llm.temperature, 1.2);
+      expect(state.llm.reasoningEffort, AiReasoningEffort.medium);
       expect(state.speech.ttsModel, AiSpeechConfig.flashTtsModel);
       expect(state.speech.ttsVoice, AiSpeechConfig.defaultFlashTtsVoice);
       expect(state.speech.ttsRate, 1.4);
@@ -269,6 +276,10 @@ void main() {
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getDouble(AiSpeakingSettingsKeys.llmTemperature), 1.2);
+      expect(
+        prefs.getString(AiSpeakingSettingsKeys.llmReasoningEffort),
+        'medium',
+      );
       expect(
         prefs.getString(AiSpeakingSettingsKeys.ttsModel),
         AiSpeechConfig.flashTtsModel,

@@ -13,6 +13,7 @@ import '../widgets/ai_speaking_composer.dart';
 import '../widgets/ai_speaking_message_bubble.dart';
 import '../widgets/ai_speaking_welcome.dart';
 import 'ai_speaking_settings_screen.dart';
+import 'speaking_engine_settings_screen.dart';
 
 /// AI 口语自由练习页面。
 class AiSpeakingScreen extends ConsumerStatefulWidget {
@@ -58,7 +59,17 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
     unawaited(_controller.sendText(prompt));
   }
 
-  Future<void> _openSettings() async {
+  /// 右上角设置入口默认打开「口语引擎」，配置识别、合成与当前大模型。
+  Future<void> _openSpeakingEngineSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const SpeakingEngineSettingsScreen(),
+      ),
+    );
+  }
+
+  /// 缺少 API Key 时直接进入「AI 设置」，避免用户多跳一层。
+  Future<void> _openAiSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const AiSpeakingSettingsScreen()),
     );
@@ -136,9 +147,9 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
             tooltip: l10n.aiSpeakingNewConversation,
           ),
           IconButton(
-            onPressed: _openSettings,
+            onPressed: _openSpeakingEngineSettings,
             icon: const Icon(Icons.settings_outlined),
-            tooltip: l10n.aiSpeakingSettingsTitle,
+            tooltip: l10n.speakingEngineSettingsTitle,
           ),
         ],
       ),
@@ -220,7 +231,7 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
   void _handleErrorAction(AiSpeakingErrorKind? kind) {
     switch (kind) {
       case AiSpeakingErrorKind.missingConfig:
-        unawaited(_openSettings());
+        unawaited(_openAiSettings());
         return;
       case AiSpeakingErrorKind.permissionDenied:
         unawaited(ref.read(aiSpeakingPermissionServiceProvider).openSettings());

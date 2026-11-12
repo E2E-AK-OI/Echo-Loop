@@ -87,4 +87,72 @@ void main() {
     );
     expect(adapter.requests.single.headers['Authorization'], 'Bearer sk-test');
   });
+
+  test('推理强度非 none 时请求体包含 reasoning_effort', () async {
+    final adapter = _ScriptedAdapter(
+      _jsonResponse({
+        'choices': [
+          {
+            'message': {'content': 'OK'},
+          },
+        ],
+      }),
+    );
+    final dio = Dio(BaseOptions(baseUrl: 'https://example.test'))
+      ..httpClientAdapter = adapter;
+    addTearDown(() => dio.close(force: true));
+    final settings = AiSpeakingSettings.defaults.copyWith(
+      llm: const AiLlmConfig(
+        provider: AiLlmProvider.deepSeek,
+        baseUrl: 'https://example.test/v1',
+        model: 'deepseek-chat',
+        temperature: 0.7,
+        reasoningEffort: AiReasoningEffort.high,
+      ),
+    );
+    final service = ByokAiService(
+      readSettings: () => settings,
+      credentialStore: _FakeCredentialStore('sk-test'),
+      dio: dio,
+    );
+
+    final text = await service.completeText(
+      messages: const [
+        {'role': 'user', 'content': 'Hi'},
+      ],
+    );
+
+    expect(text, 'OK');
+    final body = adapter.requests.single.data as Map<String, dynamic>;
+    expect(body['reasoning_effort'], 'high');
+  });
+
+  test('推理强度为 none 时不发送 reasoning_effort', () async {
+    final adapter = _ScriptedAdapter(
+      _jsonResponse({
+        'choices': [
+          {
+            'message': {'content': 'OK'},
+          },
+        ],
+      }),
+    );
+    final dio = Dio(BaseOptions(baseUrl: 'https://example.test'))
+      ..httpClientAdapter = adapter;
+    addTearDown(() => dio.close(force: true));
+    final service = ByokAiService(
+      readSettings: () => AiSpeakingSettings.defaults,
+      credentialStore: _FakeCredentialStore('sk-test'),
+      dio: dio,
+    );
+
+    await service.completeText(
+      messages: const [
+        {'role': 'user', 'content': 'Hi'},
+      ],
+    );
+
+    final body = adapter.requests.single.data as Map<String, dynamic>;
+    expect(body.containsKey('reasoning_effort'), isFalse);
+  });
 }

@@ -538,12 +538,14 @@ class RecordingService {
       '│ event type=${event.type.name} promptId=${event.promptId} '
           'transcriptLen=${event.transcript?.trim().length ?? 0} '
           'errorCode=${event.errorCode ?? '(null)'} '
-          'silenceMs=${event.silenceDuration?.inMilliseconds ?? -1}',
+          'silenceMs=${event.silenceDuration?.inMilliseconds ?? -1} '
+          'audioLevel=${event.audioLevel ?? '(null)'}',
     );
     switch (event.type) {
       case SpeechPracticeEventType.partialTranscriptUpdated ||
           SpeechPracticeEventType.speechStarted ||
-          SpeechPracticeEventType.silenceProgress:
+          SpeechPracticeEventType.silenceProgress ||
+          SpeechPracticeEventType.audioLevel:
         // 转发给调用方
         _eventController.add(event);
       case SpeechPracticeEventType.finalTranscriptReady ||

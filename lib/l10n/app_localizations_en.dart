@@ -5889,6 +5889,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSpeakingTemperatureLabel => 'Temperature';
 
   @override
+  String get aiSpeakingReasoningEffortLabel => 'Reasoning effort';
+
+  @override
+  String get aiSpeakingReasoningEffortHint =>
+      'Sent as reasoning_effort. Support varies by provider; use Test below to verify.';
+
+  @override
+  String get aiSpeakingReasoningEffortNone => 'None (default)';
+
+  @override
+  String get aiSpeakingReasoningEffortMinimal => 'Minimal';
+
+  @override
+  String get aiSpeakingReasoningEffortLow => 'Low';
+
+  @override
+  String get aiSpeakingReasoningEffortMedium => 'Medium';
+
+  @override
+  String get aiSpeakingReasoningEffortHigh => 'High';
+
+  @override
+  String get aiSpeakingReasoningEffortXHigh => 'Extra high';
+
+  @override
+  String get aiSpeakingReasoningEffortMax => 'Max';
+
+  @override
+  String get aiSpeakingTestLlm => 'Test';
+
+  @override
+  String get aiSpeakingTesting => 'Testing…';
+
+  @override
+  String get aiSpeakingTestSuccess => 'Connection succeeded';
+
+  @override
+  String get aiSpeakingTestFailed => 'Test failed';
+
+  @override
   String get aiSpeakingSpeechSection => 'Speech Service (Alibaba Cloud)';
 
   @override

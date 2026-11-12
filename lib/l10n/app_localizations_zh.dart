@@ -5614,6 +5614,46 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSpeakingTemperatureLabel => '温度';
 
   @override
+  String get aiSpeakingReasoningEffortLabel => '推理强度';
+
+  @override
+  String get aiSpeakingReasoningEffortHint =>
+      '作为 reasoning_effort 参数发送；不同供应商支持程度不同，可用下方测试验证。';
+
+  @override
+  String get aiSpeakingReasoningEffortNone => '无（默认）';
+
+  @override
+  String get aiSpeakingReasoningEffortMinimal => '最少';
+
+  @override
+  String get aiSpeakingReasoningEffortLow => '低';
+
+  @override
+  String get aiSpeakingReasoningEffortMedium => '中';
+
+  @override
+  String get aiSpeakingReasoningEffortHigh => '高';
+
+  @override
+  String get aiSpeakingReasoningEffortXHigh => '极高';
+
+  @override
+  String get aiSpeakingReasoningEffortMax => '最高';
+
+  @override
+  String get aiSpeakingTestLlm => '测试';
+
+  @override
+  String get aiSpeakingTesting => '测试中…';
+
+  @override
+  String get aiSpeakingTestSuccess => '连接成功';
+
+  @override
+  String get aiSpeakingTestFailed => '测试失败';
+
+  @override
   String get aiSpeakingSpeechSection => '语音服务（阿里云）';
 
   @override

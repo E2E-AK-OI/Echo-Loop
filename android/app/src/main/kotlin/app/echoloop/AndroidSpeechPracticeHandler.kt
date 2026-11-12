@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -55,6 +56,7 @@ class AndroidSpeechPracticeHandler(
     private var recordedDurationMs: Double = 0.0
     private var firstDetectedSpeechMs: Double? = null
     private var lastDetectedSpeechMs: Double? = null
+    private var lastAudioLevelAtMs: Long = 0L
 
     /** 有声判定门槛，按环境底噪自适应（替代旧固定门槛 0.015）。 */
     private val vadThreshold = AdaptiveVadThreshold()
@@ -65,6 +67,9 @@ class AndroidSpeechPracticeHandler(
     companion object {
         private const val TAG = "SpeechPractice"
         private const val PERMISSION_REQUEST_CODE = 9001
+
+        /** 输入电平事件节流间隔，避免高频跨线程事件拖慢 UI。 */
+        private const val AUDIO_LEVEL_INTERVAL_MS = 80L
     }
 
     init {
@@ -314,6 +319,16 @@ class AndroidSpeechPracticeHandler(
         if (!isRecording) return
         val promptId = currentPromptId ?: return
 
+        val levelNowMs = SystemClock.elapsedRealtime()
+        if (levelNowMs - lastAudioLevelAtMs >= AUDIO_LEVEL_INTERVAL_MS) {
+            lastAudioLevelAtMs = levelNowMs
+            emitEvent(mapOf(
+                "type" to "audioLevel",
+                "promptId" to promptId,
+                "audioLevel" to rms,
+            ))
+        }
+
         val bufferDurationMs = (frameCount.toDouble() / 16000.0) * 1000.0
         val bufferStartMs = recordedDurationMs
         val bufferEndMs = bufferStartMs + bufferDurationMs
@@ -370,6 +385,7 @@ class AndroidSpeechPracticeHandler(
         recordedDurationMs = 0.0
         firstDetectedSpeechMs = null
         lastDetectedSpeechMs = null
+        lastAudioLevelAtMs = 0L
         vadThreshold.reset()
     }
 
@@ -385,6 +401,7 @@ class AndroidSpeechPracticeHandler(
         recordedDurationMs = 0.0
         firstDetectedSpeechMs = null
         lastDetectedSpeechMs = null
+        lastAudioLevelAtMs = 0L
         vadThreshold.reset()
     }
 

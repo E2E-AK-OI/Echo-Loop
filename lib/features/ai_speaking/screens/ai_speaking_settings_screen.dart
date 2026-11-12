@@ -42,6 +42,9 @@ class _AiSpeakingSettingsScreenState
   bool _savingDashscopeKey = false;
   bool _previewing = false;
   bool _loadingModels = false;
+  bool _testingLlm = false;
+  bool _testSucceeded = false;
+  String? _testResult;
   List<String> _availableModels = const <String>[];
 
   @override
@@ -184,6 +187,62 @@ class _AiSpeakingSettingsScreenState
     } finally {
       if (mounted) setState(() => _previewing = false);
     }
+  }
+
+  /// 用当前供应商、模型、温度与推理强度发送一次最小请求，验证配置是否可用。
+  Future<void> _testLlm() async {
+    if (_testingLlm) return;
+    final l10n = AppLocalizations.of(context)!;
+    setState(() {
+      _testingLlm = true;
+      _testResult = null;
+    });
+    final stopwatch = Stopwatch()..start();
+    try {
+      final reply = await ref
+          .read(byokAiServiceProvider)
+          .completeText(
+            messages: const [
+              {'role': 'user', 'content': 'Reply with exactly: OK'},
+            ],
+          )
+          .timeout(const Duration(seconds: 30));
+      stopwatch.stop();
+      if (!mounted) return;
+      final preview = reply.trim().replaceAll(RegExp(r'\s+'), ' ');
+      setState(() {
+        _testSucceeded = true;
+        _testResult =
+            '${l10n.aiSpeakingTestSuccess} · ${stopwatch.elapsedMilliseconds} ms'
+            '${preview.isEmpty ? '' : ' · ${_truncate(preview, 60)}'}';
+      });
+    } on ByokAiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _testSucceeded = false;
+        _testResult = '${l10n.aiSpeakingTestFailed}: ${error.message}';
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _testSucceeded = false;
+        _testResult = '${l10n.aiSpeakingTestFailed}: timeout (30s)';
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _testSucceeded = false;
+        _testResult = '${l10n.aiSpeakingTestFailed}: $error';
+      });
+    } finally {
+      if (mounted) setState(() => _testingLlm = false);
+    }
+  }
+
+  String _truncate(String value, int maxLength) {
+    return value.length <= maxLength
+        ? value
+        : '${value.substring(0, maxLength)}…';
   }
 
   void _showMessage(String text) {
@@ -339,6 +398,83 @@ class _AiSpeakingSettingsScreenState
                         textAlign: TextAlign.end,
                       ),
                     ),
+                  ],
+                ),
+              ),
+              _FieldBlock(
+                label: l10n.aiSpeakingReasoningEffortLabel,
+                subtitle: l10n.aiSpeakingReasoningEffortHint,
+                child: _dropdownContainer(
+                  child: AppDropdown<AiReasoningEffort>(
+                    value: settings.llm.reasoningEffort,
+                    isExpanded: true,
+                    items: AiReasoningEffort.values
+                        .map(
+                          (effort) => DropdownMenuItem<AiReasoningEffort>(
+                            value: effort,
+                            child: Text(_reasoningEffortLabel(l10n, effort)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (effort) {
+                      if (effort == null) return;
+                      ref
+                          .read(aiSpeakingSettingsProvider.notifier)
+                          .setReasoningEffort(effort);
+                    },
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _testingLlm ? null : _testLlm,
+                      icon: _testingLlm
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.network_check_rounded),
+                      label: Text(
+                        _testingLlm
+                            ? l10n.aiSpeakingTesting
+                            : l10n.aiSpeakingTestLlm,
+                      ),
+                    ),
+                    if (_testResult != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            _testSucceeded
+                                ? Icons.check_circle_outline
+                                : Icons.error_outline,
+                            size: 16,
+                            color: _testSucceeded
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.error,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _testResult!,
+                              style: AppTextStyles.caption(context).copyWith(
+                                color: _testSucceeded
+                                    ? Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant
+                                    : Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -568,6 +704,21 @@ class _AiSpeakingSettingsScreenState
     return uri != null &&
         (uri.scheme == 'http' || uri.scheme == 'https') &&
         uri.host.isNotEmpty;
+  }
+
+  String _reasoningEffortLabel(
+    AppLocalizations l10n,
+    AiReasoningEffort effort,
+  ) {
+    return switch (effort) {
+      AiReasoningEffort.none => l10n.aiSpeakingReasoningEffortNone,
+      AiReasoningEffort.minimal => l10n.aiSpeakingReasoningEffortMinimal,
+      AiReasoningEffort.low => l10n.aiSpeakingReasoningEffortLow,
+      AiReasoningEffort.medium => l10n.aiSpeakingReasoningEffortMedium,
+      AiReasoningEffort.high => l10n.aiSpeakingReasoningEffortHigh,
+      AiReasoningEffort.xhigh => l10n.aiSpeakingReasoningEffortXHigh,
+      AiReasoningEffort.max => l10n.aiSpeakingReasoningEffortMax,
+    };
   }
 
   String _providerLabel(AppLocalizations l10n, AiLlmProvider provider) {

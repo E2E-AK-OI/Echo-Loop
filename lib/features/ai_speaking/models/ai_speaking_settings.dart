@@ -14,11 +14,42 @@ abstract final class AiSpeakingSettingsKeys {
   static const llmBaseUrl = 'ai_speaking_llm_base_url';
   static const llmModel = 'ai_speaking_llm_model';
   static const llmTemperature = 'ai_speaking_llm_temperature';
+  static const llmReasoningEffort = 'ai_speaking_llm_reasoning_effort';
   static const ttsModel = 'ai_speaking_tts_model';
   static const ttsVoice = 'ai_speaking_tts_voice';
   static const ttsRate = 'ai_speaking_tts_rate';
   static const ttsAutoPlay = 'ai_speaking_tts_auto_play';
   static const workspaceId = 'ai_speaking_workspace_id';
+}
+
+/// 推理强度档位，按 OpenAI 兼容接口的 `reasoning_effort` 取值排序。
+///
+/// `none` 表示不发送该参数，保持与旧版本一致；其余档位是否被供应商支持
+/// 由服务端决定，设置页的测试按钮用于实际验证。
+enum AiReasoningEffort {
+  none('none'),
+  minimal('minimal'),
+  low('low'),
+  medium('medium'),
+  high('high'),
+  xhigh('xhigh'),
+  max('max');
+
+  const AiReasoningEffort(this.wireValue);
+
+  /// 请求体中 `reasoning_effort` 的取值。
+  final String wireValue;
+
+  /// 需要随请求发送的参数值；`none` 不发送。
+  String? get requestValue => this == AiReasoningEffort.none ? null : wireValue;
+
+  /// 读取持久化值，未知或缺失时回退到 `none`。
+  static AiReasoningEffort fromStorage(String? value) {
+    for (final effort in values) {
+      if (effort.wireValue == value) return effort;
+    }
+    return none;
+  }
 }
 
 /// 大模型连接配置。
@@ -28,12 +59,16 @@ class AiLlmConfig {
     required this.baseUrl,
     required this.model,
     required this.temperature,
+    this.reasoningEffort = AiReasoningEffort.none,
   });
 
   final AiLlmProvider provider;
   final String baseUrl;
   final String model;
   final double temperature;
+
+  /// 推理强度；默认不向服务端发送该参数。
+  final AiReasoningEffort reasoningEffort;
 
   factory AiLlmConfig.defaultsFor(AiLlmProvider provider) {
     final preset = AiLlmPreset.of(provider);
@@ -42,6 +77,7 @@ class AiLlmConfig {
       baseUrl: preset.baseUrl,
       model: preset.defaultModel,
       temperature: 0.7,
+      reasoningEffort: AiReasoningEffort.none,
     );
   }
 
@@ -50,12 +86,14 @@ class AiLlmConfig {
     String? baseUrl,
     String? model,
     double? temperature,
+    AiReasoningEffort? reasoningEffort,
   }) {
     return AiLlmConfig(
       provider: provider ?? this.provider,
       baseUrl: baseUrl ?? this.baseUrl,
       model: model ?? this.model,
       temperature: temperature ?? this.temperature,
+      reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     );
   }
 
@@ -65,11 +103,13 @@ class AiLlmConfig {
         other.provider == provider &&
         other.baseUrl == baseUrl &&
         other.model == model &&
-        other.temperature == temperature;
+        other.temperature == temperature &&
+        other.reasoningEffort == reasoningEffort;
   }
 
   @override
-  int get hashCode => Object.hash(provider, baseUrl, model, temperature);
+  int get hashCode =>
+      Object.hash(provider, baseUrl, model, temperature, reasoningEffort);
 }
 
 /// TTS 音色选项：label 用于界面展示，value 是 DashScope 的 voice 参数。
@@ -241,6 +281,9 @@ class AiSpeakingSettings {
         prefs.getString(AiSpeakingSettingsKeys.llmModel)?.trim() ?? '';
     final rawTemperature =
         prefs.getDouble(AiSpeakingSettingsKeys.llmTemperature) ?? 0.7;
+    final reasoningEffort = AiReasoningEffort.fromStorage(
+      prefs.getString(AiSpeakingSettingsKeys.llmReasoningEffort),
+    );
     final rawTtsRate = prefs.getDouble(AiSpeakingSettingsKeys.ttsRate) ?? 1.0;
     final storedTtsModel =
         prefs.getString(AiSpeakingSettingsKeys.ttsModel)?.trim() ?? '';
@@ -262,6 +305,7 @@ class AiSpeakingSettings {
         baseUrl: storedBaseUrl.isEmpty ? preset.baseUrl : storedBaseUrl,
         model: storedModel.isEmpty ? preset.defaultModel : storedModel,
         temperature: rawTemperature.clamp(0.0, 2.0).toDouble(),
+        reasoningEffort: reasoningEffort,
       ),
       speech: AiSpeechConfig(
         asrModel: AiSpeechConfig.defaultAsrModel,

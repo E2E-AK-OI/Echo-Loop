@@ -57,6 +57,14 @@ class AiSpeakingSettingsNotifier extends Notifier<AiSpeakingSettings> {
     await _persistDouble(AiSpeakingSettingsKeys.llmTemperature, value);
   }
 
+  Future<void> setReasoningEffort(AiReasoningEffort effort) async {
+    state = state.copyWith(llm: state.llm.copyWith(reasoningEffort: effort));
+    await _persistString(
+      AiSpeakingSettingsKeys.llmReasoningEffort,
+      effort.wireValue,
+    );
+  }
+
   Future<void> setTtsModel(String model) async {
     final normalizedModel = AiSpeechConfig.normalizeTtsModel(model.trim());
     final previousVoice = state.speech.ttsVoice;

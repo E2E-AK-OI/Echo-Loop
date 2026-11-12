@@ -294,6 +294,7 @@ class SpeechPracticePlatform implements SpeechPracticeBackend {
       'speechStarted' => SpeechPracticeEventType.speechStarted,
       'silenceProgress' => SpeechPracticeEventType.silenceProgress,
       'finalTranscriptReady' => SpeechPracticeEventType.finalTranscriptReady,
+      'audioLevel' => SpeechPracticeEventType.audioLevel,
       _ => SpeechPracticeEventType.error,
     };
     return SpeechPracticeEvent(
@@ -305,6 +306,10 @@ class SpeechPracticePlatform implements SpeechPracticeBackend {
       silenceDuration: switch (event['silenceMs']) {
         final int ms => Duration(milliseconds: ms),
         final num ms => Duration(milliseconds: ms.round()),
+        _ => null,
+      },
+      audioLevel: switch (event['audioLevel']) {
+        final num value => value.toDouble(),
         _ => null,
       },
     );

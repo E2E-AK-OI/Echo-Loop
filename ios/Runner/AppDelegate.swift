@@ -50,6 +50,8 @@ private final class IOSSpeechPracticeHandler: NSObject, FlutterStreamHandler {
   private var recordedDurationMs = 0.0
   private var firstDetectedSpeechMs: Double?
   private var lastDetectedSpeechMs: Double?
+  /// 上次发送音频电平事件的时间，用于约 80ms 节流。
+  private var lastAudioLevelAt: TimeInterval = 0
   private var sessionGeneration: Int = 0
 
   init(binaryMessenger: FlutterBinaryMessenger) {
@@ -537,7 +539,18 @@ private final class IOSSpeechPracticeHandler: NSObject, FlutterStreamHandler {
     let bufferStartMs = recordedDurationMs
     let bufferEndMs = bufferStartMs + bufferDurationMs
 
-    if isSpeechDetected(in: buffer) {
+    let level = rmsLevel(of: buffer)
+    let levelNow = Date().timeIntervalSince1970
+    if levelNow - lastAudioLevelAt >= 0.08 {
+      lastAudioLevelAt = levelNow
+      emitEvent([
+        "type": "audioLevel",
+        "promptId": promptId,
+        "audioLevel": Double(level)
+      ])
+    }
+
+    if isSpeechDetected(rms: level) {
       if !hasDetectedSpeech {
         hasDetectedSpeech = true
         emitEvent([
@@ -580,8 +593,8 @@ private final class IOSSpeechPracticeHandler: NSObject, FlutterStreamHandler {
   }
 
   /// 有声判定：buffer 原始 RMS 与自适应门槛比较（见 `AdaptiveVadThreshold`）。
-  private func isSpeechDetected(in buffer: AVAudioPCMBuffer) -> Bool {
-    vadThreshold.isVoiced(rms: rmsLevel(of: buffer))
+  private func isSpeechDetected(rms: Float) -> Bool {
+    vadThreshold.isVoiced(rms: rms)
   }
 
   private func trimRecordingIfNeeded(fileURL: URL) {
@@ -765,6 +778,7 @@ private final class IOSSpeechPracticeHandler: NSObject, FlutterStreamHandler {
     recordedDurationMs = 0
     firstDetectedSpeechMs = nil
     lastDetectedSpeechMs = nil
+    lastAudioLevelAt = 0
     vadThreshold.reset()
   }
 
@@ -792,6 +806,7 @@ private final class IOSSpeechPracticeHandler: NSObject, FlutterStreamHandler {
     recordedDurationMs = 0
     firstDetectedSpeechMs = nil
     lastDetectedSpeechMs = nil
+    lastAudioLevelAt = 0
     vadThreshold.reset()
     self.audioFile = audioFile
     recognitionRequest = request

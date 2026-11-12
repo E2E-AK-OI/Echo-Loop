@@ -768,6 +768,8 @@ class SpeechRecordingController extends Notifier<SpeechRecordingState> {
         _handleSpeechStarted(event, generation);
       case SpeechPracticeEventType.silenceProgress:
         _handleSilenceProgress(event, generation);
+      case SpeechPracticeEventType.audioLevel:
+        break; // 电平原生事件仅 AI 口语使用
       case SpeechPracticeEventType.finalTranscriptReady ||
           SpeechPracticeEventType.error:
         break; // RecordingService 内部处理

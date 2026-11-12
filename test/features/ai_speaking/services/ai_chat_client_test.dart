@@ -101,9 +101,30 @@ void main() {
     expect(body['model'], 'deepseek-chat');
     expect(body['temperature'], 0.6);
     expect(body['stream'], isTrue);
+    expect(body.containsKey('reasoning_effort'), isFalse);
     final messages = body['messages'] as List<dynamic>;
     expect(messages.first['role'], 'system');
     expect(messages.where((item) => item['role'] == 'user').length, 1);
+  });
+
+  test('推理强度非 none 时写入 reasoning_effort', () async {
+    final adapter = _SseAdapter(body: 'data: [DONE]\n');
+    final dio = Dio()..httpClientAdapter = adapter;
+    final client = HttpOpenAiCompatibleChatClient(dio: dio);
+
+    await client
+        .streamReply(
+          config: _config().copyWith(reasoningEffort: AiReasoningEffort.xhigh),
+          apiKey: 'key',
+          history: [_message('u1', AiSpeakingRole.user, 'Hi')],
+        )
+        .toList();
+
+    expect(
+      (adapter.requests.single.data
+          as Map<String, dynamic>)['reasoning_effort'],
+      'xhigh',
+    );
   });
 
   test('错误消息与非空校验：error 消息不发送给大模型', () async {

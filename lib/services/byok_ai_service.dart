@@ -119,6 +119,8 @@ class ByokAiService {
           'model': resolved.config.model,
           'messages': messages,
           'temperature': temperature ?? resolved.config.temperature,
+          if (resolved.config.reasoningEffort.requestValue case final effort?)
+            'reasoning_effort': effort,
           'stream': false,
         },
         options: Options(
@@ -200,6 +202,8 @@ class ByokAiService {
           'model': resolved.config.model,
           'messages': messages,
           'temperature': temperature ?? resolved.config.temperature,
+          if (resolved.config.reasoningEffort.requestValue case final effort?)
+            'reasoning_effort': effort,
           'stream': true,
         },
         options: Options(

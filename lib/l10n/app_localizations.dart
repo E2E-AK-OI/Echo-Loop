@@ -10376,6 +10376,84 @@ abstract class AppLocalizations {
   /// **'Temperature'**
   String get aiSpeakingTemperatureLabel;
 
+  /// No description provided for @aiSpeakingReasoningEffortLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reasoning effort'**
+  String get aiSpeakingReasoningEffortLabel;
+
+  /// No description provided for @aiSpeakingReasoningEffortHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent as reasoning_effort. Support varies by provider; use Test below to verify.'**
+  String get aiSpeakingReasoningEffortHint;
+
+  /// No description provided for @aiSpeakingReasoningEffortNone.
+  ///
+  /// In en, this message translates to:
+  /// **'None (default)'**
+  String get aiSpeakingReasoningEffortNone;
+
+  /// No description provided for @aiSpeakingReasoningEffortMinimal.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimal'**
+  String get aiSpeakingReasoningEffortMinimal;
+
+  /// No description provided for @aiSpeakingReasoningEffortLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low'**
+  String get aiSpeakingReasoningEffortLow;
+
+  /// No description provided for @aiSpeakingReasoningEffortMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium'**
+  String get aiSpeakingReasoningEffortMedium;
+
+  /// No description provided for @aiSpeakingReasoningEffortHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High'**
+  String get aiSpeakingReasoningEffortHigh;
+
+  /// No description provided for @aiSpeakingReasoningEffortXHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra high'**
+  String get aiSpeakingReasoningEffortXHigh;
+
+  /// No description provided for @aiSpeakingReasoningEffortMax.
+  ///
+  /// In en, this message translates to:
+  /// **'Max'**
+  String get aiSpeakingReasoningEffortMax;
+
+  /// No description provided for @aiSpeakingTestLlm.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get aiSpeakingTestLlm;
+
+  /// No description provided for @aiSpeakingTesting.
+  ///
+  /// In en, this message translates to:
+  /// **'Testing…'**
+  String get aiSpeakingTesting;
+
+  /// No description provided for @aiSpeakingTestSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection succeeded'**
+  String get aiSpeakingTestSuccess;
+
+  /// No description provided for @aiSpeakingTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Test failed'**
+  String get aiSpeakingTestFailed;
+
   /// No description provided for @aiSpeakingSpeechSection.
   ///
   /// In en, this message translates to:

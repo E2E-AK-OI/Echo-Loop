@@ -108,6 +108,8 @@ class HttpOpenAiCompatibleChatClient implements AiChatClient {
           'model': config.model,
           'messages': messages,
           'temperature': config.temperature,
+          if (config.reasoningEffort.requestValue case final effort?)
+            'reasoning_effort': effort,
           'stream': true,
         },
         options: Options(

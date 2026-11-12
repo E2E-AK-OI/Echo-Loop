@@ -72,6 +72,9 @@ enum SpeechPracticeEventType {
   /// 最终转录完成。
   finalTranscriptReady,
 
+  /// 录音中的输入电平（原始 RMS，0~1）。
+  audioLevel,
+
   /// 原生录音/识别错误。
   error,
 }
@@ -136,6 +139,9 @@ class SpeechPracticeEvent {
   /// 开口后的连续静音时长。
   final Duration? silenceDuration;
 
+  /// 录音中的输入电平（原始 RMS，0~1）。
+  final double? audioLevel;
+
   const SpeechPracticeEvent({
     required this.type,
     required this.promptId,
@@ -143,6 +149,7 @@ class SpeechPracticeEvent {
     this.errorCode,
     this.errorMessage,
     this.silenceDuration,
+    this.audioLevel,
   });
 }
 

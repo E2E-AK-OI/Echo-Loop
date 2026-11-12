@@ -20,6 +20,7 @@ class AiSpeakingSessionState {
     this.messages = const [],
     this.phase = AiSpeakingPhase.idle,
     this.partialTranscript = '',
+    this.inputLevel = 0,
     this.errorMessage,
     this.errorKind,
   });
@@ -27,6 +28,9 @@ class AiSpeakingSessionState {
   final List<AiSpeakingMessage> messages;
   final AiSpeakingPhase phase;
   final String partialTranscript;
+
+  /// 录音输入电平，0~1；用于驱动话筒动画。
+  final double inputLevel;
   final String? errorMessage;
   final AiSpeakingErrorKind? errorKind;
 
@@ -34,6 +38,7 @@ class AiSpeakingSessionState {
     List<AiSpeakingMessage>? messages,
     AiSpeakingPhase? phase,
     String? partialTranscript,
+    double? inputLevel,
     String? errorMessage,
     AiSpeakingErrorKind? errorKind,
     bool clearError = false,
@@ -42,6 +47,7 @@ class AiSpeakingSessionState {
       messages: messages ?? this.messages,
       phase: phase ?? this.phase,
       partialTranscript: partialTranscript ?? this.partialTranscript,
+      inputLevel: inputLevel ?? this.inputLevel,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       errorKind: clearError ? null : (errorKind ?? this.errorKind),
     );

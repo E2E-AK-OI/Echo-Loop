@@ -134,15 +134,7 @@ class AiSpeakingComposer extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Row(
       children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.mic_rounded, color: colorScheme.onPrimaryContainer),
-        ),
+        _ListeningIndicator(level: state.inputLevel),
         const SizedBox(width: AppSpacing.m),
         Expanded(
           child: Column(
@@ -229,5 +221,71 @@ class AiSpeakingComposer extends StatelessWidget {
     final minutes = duration.inMinutes.toString().padLeft(2, '0');
     final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+}
+
+/// 录音中的话筒指示器：外圈随输入电平放大、颜色逐渐加深。
+///
+/// 电平由控制器按 80ms 节流更新，这里再用 120ms 补间，避免动画抖动。
+class _ListeningIndicator extends StatelessWidget {
+  const _ListeningIndicator({required this.level});
+
+  final double level;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final target = level.isFinite ? level.clamp(0.0, 1.0) : 0.0;
+    return SizedBox(
+      width: 60,
+      height: 60,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: target),
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        builder: (context, animatedLevel, _) {
+          final intensity = (animatedLevel * 1.6).clamp(0.0, 1.0);
+          final glowDiameter = 44 + 14 * animatedLevel;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: glowDiameter,
+                height: glowDiameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colorScheme.primary.withValues(
+                    alpha: 0.10 + 0.22 * animatedLevel,
+                  ),
+                ),
+              ),
+              Transform.scale(
+                scale: 1 + 0.14 * animatedLevel,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color.lerp(
+                      colorScheme.primaryContainer,
+                      colorScheme.primary,
+                      intensity,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.mic_rounded,
+                    color: Color.lerp(
+                      colorScheme.onPrimaryContainer,
+                      colorScheme.onPrimary,
+                      intensity,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }

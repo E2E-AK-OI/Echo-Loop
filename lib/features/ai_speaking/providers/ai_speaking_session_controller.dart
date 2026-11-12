@@ -26,6 +26,7 @@ import '../services/ai_chat_client.dart';
 import '../services/ai_speaking_permission_service.dart';
 import '../services/aliyun_realtime_asr_client.dart';
 import '../services/aliyun_tts_client.dart';
+import '../services/audio_level.dart';
 import '../services/pcm_recorder.dart';
 import 'ai_speaking_settings_provider.dart';
 import 'speaking_engine_settings_provider.dart';
@@ -97,6 +98,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   CancelToken? _chatCancelToken;
   CancelToken? _ttsCancelToken;
   int _turnId = 0;
+  int _lastPcmLevelAtMs = 0;
   bool _isDisposed = false;
 
   @override
@@ -216,10 +218,19 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         unawaited(_cleanupAsr());
       },
     );
+    _lastPcmLevelAtMs = 0;
     _pcmSubscription = pcmStream.listen(
       (bytes) {
         if (!_isActive(turnId)) return;
         _asrSession?.appendPcm(bytes);
+        // 原始 PCM 每 20~40ms 到达一帧，节流后再刷新 UI，避免过度重建。
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - _lastPcmLevelAtMs >= 80) {
+          _lastPcmLevelAtMs = now;
+          state = state.copyWith(
+            inputLevel: normalizeAudioLevel(pcm16Rms(bytes)),
+          );
+        }
       },
       onError: (Object error) {
         if (!_isActive(turnId)) return;
@@ -230,6 +241,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     state = state.copyWith(
       phase: AiSpeakingPhase.listening,
       partialTranscript: '',
+      inputLevel: 0,
       clearError: true,
     );
   }
@@ -237,7 +249,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   Future<void> stopListening() async {
     if (state.phase != AiSpeakingPhase.listening) return;
     final turnId = _turnId;
-    state = state.copyWith(phase: AiSpeakingPhase.finalizing);
+    state = state.copyWith(phase: AiSpeakingPhase.finalizing, inputLevel: 0);
     if (_localRecordingService != null) {
       await _stopLocalListening(turnId);
       return;
@@ -287,6 +299,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     state = state.copyWith(
       phase: AiSpeakingPhase.idle,
       partialTranscript: '',
+      inputLevel: 0,
       clearError: true,
     );
   }
@@ -669,6 +682,12 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     _localAsrSubscription = service.events.listen(
       (event) {
         if (!_isActive(turnId)) return;
+        if (event.type == SpeechPracticeEventType.audioLevel) {
+          state = state.copyWith(
+            inputLevel: normalizeAudioLevel(event.audioLevel ?? 0),
+          );
+          return;
+        }
         if (event.type != SpeechPracticeEventType.partialTranscriptUpdated) {
           return;
         }
@@ -703,6 +722,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     state = state.copyWith(
       phase: AiSpeakingPhase.listening,
       partialTranscript: '',
+      inputLevel: 0,
       clearError: true,
     );
   }

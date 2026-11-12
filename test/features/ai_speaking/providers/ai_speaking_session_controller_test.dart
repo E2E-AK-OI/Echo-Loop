@@ -319,6 +319,28 @@ void main() {
     expect(state.errorKind, AiSpeakingErrorKind.permissionDenied);
   });
 
+  test('录音 PCM 驱动输入电平并在取消后归零', () async {
+    final container = makeContainer();
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.startListening();
+    expect(container.read(aiSpeakingSessionControllerProvider).inputLevel, 0);
+
+    final sample = ByteData(2)..setInt16(0, 1311, Endian.little);
+    pcmEvents.add(sample.buffer.asUint8List());
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).inputLevel,
+      closeTo(0.36, 0.01),
+    );
+
+    await controller.cancelListening();
+    expect(container.read(aiSpeakingSessionControllerProvider).inputLevel, 0);
+  });
+
   test('录音识别完成后发送用户消息并生成流式回复', () async {
     when(() => asrSession.finish())
         .thenAnswer((_) async => '  Hello teacher  ');
@@ -573,10 +595,24 @@ void main() {
       'Hel',
     );
 
+    localSpeechEvents.add(
+      const SpeechPracticeEvent(
+        type: SpeechPracticeEventType.audioLevel,
+        promptId: 'ai-speaking',
+        audioLevel: 0.04,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).inputLevel,
+      closeTo(0.36, 0.01),
+    );
+
     await controller.stopListening();
 
     final state = container.read(aiSpeakingSessionControllerProvider);
     expect(state.phase, AiSpeakingPhase.idle);
+    expect(state.inputLevel, 0);
     expect(state.messages.first.content, 'Hello local');
     expect(state.messages.last.content, 'Hi there!');
   });
