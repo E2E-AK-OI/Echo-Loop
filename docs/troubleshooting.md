@@ -352,3 +352,12 @@
 - 规则：DashScope Qwen TTS 的 `voice` 必须属于当前 `model`，不能跨模型复用；模型切换时音色选择与持久化必须原子完成，不能只改 model 留下旧 voice。
 - 相关代码：`lib/features/ai_speaking/models/ai_speaking_settings.dart`（`AiTtsVoice`/`voicesForModel`/`resolveTtsVoice`）、`lib/features/ai_speaking/providers/ai_speaking_settings_provider.dart`（`setTtsModel`/`setTtsVoice`）、`lib/features/ai_speaking/screens/ai_speaking_settings_screen.dart`；测试 `test/features/ai_speaking/models/ai_speaking_settings_test.dart`（音色目录、跨模型回退、切换持久化）。
 - 修复时间：2026-11-12。
+
+### 7.49 直接调用 Gradle 构建 APK 时 pubspec 的版本号不生效：flutter.versionName 来自 local.properties
+
+- 现象：`pubspec.yaml` 已改为 `version: 1.01.0+47`，但直接执行 `gradle :app:assembleDevRelease` 后 `aapt2 dump badging` 显示 `versionCode='1' versionName='1.0'`；只有走 `flutter build apk` 才会带上 pubspec 版本。
+- 根因：直接调用 Gradle 时不会先跑 Flutter 的 pubspec 解析，`FlutterExtension.versionName` / `versionCode` 的默认值取自 `android/local.properties` 的 `flutter.versionName` / `flutter.versionCode`（Flutter Gradle 插件缺省 `'1.0'` / `'1'`）。本仓库的 `local.properties` 只有 `sdk.dir` 与 `flutter.sdk`。
+- 解法：在 `android/local.properties`（被 `.gitignore` 忽略，不提交）追加 `flutter.versionCode=47` 与 `flutter.versionName=1.01.0`，重建后 badging 正确。若改用 `flutter build apk --release --flavor dev`，则由 Flutter 自动写入，无需手工维护。
+- 规则：绕过 Flutter 工具直接调 Gradle 打包时，版本号等 `flutter.*` 属性要自己保证；验收以 `aapt2 dump badging` 为准，不能只看 `build.gradle` 里引用的变量名。
+- 相关文件：`android/app/build.gradle`（`versionCode = flutter.versionCode`、`versionName = flutter.versionName`）、`android/local.properties`。
+- 记录时间：2026-11-12。

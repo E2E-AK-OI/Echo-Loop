@@ -60,9 +60,12 @@ import 'download_tasks_screen.dart';
 import 'reminder_settings_screen.dart';
 import '../features/ai_speaking/models/ai_llm_provider.dart';
 import '../features/ai_speaking/models/ai_speaking_settings.dart';
+import '../features/ai_speaking/models/speaking_engine_settings.dart';
 import '../features/ai_speaking/providers/ai_speaking_settings_provider.dart';
 import '../features/ai_speaking/services/ai_speaking_permission_service.dart';
 import '../features/ai_speaking/screens/ai_speaking_settings_screen.dart';
+import '../features/ai_speaking/providers/speaking_engine_settings_provider.dart';
+import '../features/ai_speaking/screens/speaking_engine_settings_screen.dart';
 
 const double _settingsLeadingIconExtent = 32;
 const double _settingsSvgIconExtent = 26;
@@ -283,6 +286,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ),
+        if (ref.watch(aiSpeakingPermissionServiceProvider).isSupported)
+          ListTile(
+            leading: _settingsMaterialIcon(Icons.tune),
+            title: Text(l10n.speakingEngineSettingsTitle),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _speakingEngineSummary(
+                    l10n,
+                    ref.watch(speakingEngineSettingsProvider),
+                    ref.watch(aiSpeakingSettingsProvider),
+                  ),
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SpeakingEngineSettingsScreen(),
+              ),
+            ),
+          ),
         ListTile(
           leading: _settingsThemedSvgIcon(
             context,
@@ -336,6 +364,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       AiLlmProvider.custom => l10n.aiSpeakingProviderCustom,
     };
     return '$providerLabel · ${settings.llm.model}';
+  }
+
+  /// 口语引擎入口摘要：识别来源、合成来源与当前大模型。
+  String _speakingEngineSummary(
+    AppLocalizations l10n,
+    SpeakingEngineSettings engineSettings,
+    AiSpeakingSettings aiSettings,
+  ) {
+    final asr = engineSettings.usesLocalAsr
+        ? l10n.speakingEngineSourceLocal
+        : l10n.speakingEngineSourceAi;
+    final tts = engineSettings.usesLocalTts
+        ? l10n.speakingEngineSourceLocal
+        : l10n.speakingEngineSourceAi;
+    return '${l10n.speakingEngineSummaryAsr} $asr · '
+        '${l10n.speakingEngineSummaryTts} $tts · ${aiSettings.llm.model}';
   }
 
   /// 设置首页仅展示当前语音引擎品牌，口音和音色留在语音合成详情页展示。
@@ -565,6 +609,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// 把三段式版本号中「带前导零的小版本 + 补零补丁号」简写展示。
+  ///
+  /// pubspec 的版本号必须是三段式，但产品口径用 1.01 这类两位小版本；
+  /// 只在这种明确形态下省略末尾 `.0`，其他版本号原样展示。
+  String _displayVersion(String version) {
+    final parts = version.split('.');
+    if (parts.length == 3 &&
+        parts[2] == '0' &&
+        parts[1].length > 1 &&
+        parts[1].startsWith('0')) {
+      return '${parts[0]}.${parts[1]}';
+    }
+    return version;
+  }
+
   /// 版本号标签，置于设置页最底部。
   /// 连续点击可解锁开发者选项。
   Widget _buildVersionLabel(
@@ -572,7 +631,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     WidgetRef ref,
     AppLocalizations l10n,
   ) {
-    final versionDisplay = ref.watch(packageInfoProvider).version;
+    final versionDisplay = _displayVersion(
+      ref.watch(packageInfoProvider).version,
+    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

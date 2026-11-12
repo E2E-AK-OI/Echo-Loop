@@ -5703,4 +5703,81 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiSpeakingPreviewFailed => '音色试听失败。';
+
+  @override
+  String get speakingEngineSettingsTitle => '口语引擎';
+
+  @override
+  String get speakingEngineAsrSection => '语音识别';
+
+  @override
+  String get speakingEngineTtsSection => '语音合成';
+
+  @override
+  String get speakingEngineLlmSection => '大模型';
+
+  @override
+  String get speakingEngineLlmDescription => '从 AI 设置中已配置的大模型里选择。';
+
+  @override
+  String get speakingEngineAsrAi => 'AI 语音识别';
+
+  @override
+  String get speakingEngineAsrAiDescription => '通过 DashScope 实时识别语音。';
+
+  @override
+  String get speakingEngineAsrLocal => '本地语音识别';
+
+  @override
+  String get speakingEngineAsrLocalDescription => '使用「语音识别」设置中的离线模型。';
+
+  @override
+  String get speakingEngineTtsAi => 'AI 语音合成';
+
+  @override
+  String get speakingEngineTtsAiDescription => '通过 DashScope 合成回复语音。';
+
+  @override
+  String get speakingEngineTtsLocal => '本地语音合成';
+
+  @override
+  String get speakingEngineTtsLocalDescription => '使用「语音合成」设置中的引擎与音色。';
+
+  @override
+  String get speakingEngineNoConfiguredLlm =>
+      '还没有已配置的大模型，请先在 AI 设置中填写 API Key。';
+
+  @override
+  String get speakingEngineOpenAiSettings => '前往 AI 设置';
+
+  @override
+  String get speakingEngineOpenAsrSettings => '前往语音识别设置';
+
+  @override
+  String get speakingEngineOpenTtsSettings => '前往语音合成设置';
+
+  @override
+  String get speakingEngineAsrNotReady => '本地语音识别模型尚未就绪，请先在语音识别设置中下载模型。';
+
+  @override
+  String get speakingEngineDashscopeKeyMissing =>
+      '尚未配置 DashScope API Key，AI 语音服务不可用。';
+
+  @override
+  String get speakingEngineSourceAi => 'AI';
+
+  @override
+  String get speakingEngineSourceLocal => '本地';
+
+  @override
+  String get speakingEngineSummaryAsr => '识别';
+
+  @override
+  String get speakingEngineSummaryTts => '合成';
+
+  @override
+  String get speakingEngineSelectConfiguredLlm => '当前大模型未配置，请选择一个已配置的大模型。';
+
+  @override
+  String get speakingEngineTtsNotReady => '本地语音合成模型尚未就绪，首次朗读时会提示下载。';
 }

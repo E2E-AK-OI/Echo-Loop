@@ -5983,4 +5983,90 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiSpeakingPreviewFailed => 'Voice preview failed.';
+
+  @override
+  String get speakingEngineSettingsTitle => 'Speaking Engine';
+
+  @override
+  String get speakingEngineAsrSection => 'Speech Recognition';
+
+  @override
+  String get speakingEngineTtsSection => 'Speech Synthesis';
+
+  @override
+  String get speakingEngineLlmSection => 'Language Model';
+
+  @override
+  String get speakingEngineLlmDescription =>
+      'Choose a model configured in AI Settings.';
+
+  @override
+  String get speakingEngineAsrAi => 'AI speech recognition';
+
+  @override
+  String get speakingEngineAsrAiDescription =>
+      'Real-time recognition through DashScope.';
+
+  @override
+  String get speakingEngineAsrLocal => 'On-device speech recognition';
+
+  @override
+  String get speakingEngineAsrLocalDescription =>
+      'Use the offline model from Speech Recognition settings.';
+
+  @override
+  String get speakingEngineTtsAi => 'AI speech synthesis';
+
+  @override
+  String get speakingEngineTtsAiDescription =>
+      'Synthesize replies through DashScope.';
+
+  @override
+  String get speakingEngineTtsLocal => 'On-device speech synthesis';
+
+  @override
+  String get speakingEngineTtsLocalDescription =>
+      'Use the engine and voice from Speech Synthesis settings.';
+
+  @override
+  String get speakingEngineNoConfiguredLlm =>
+      'No language model is configured. Add an API key in AI Settings first.';
+
+  @override
+  String get speakingEngineOpenAiSettings => 'Open AI Settings';
+
+  @override
+  String get speakingEngineOpenAsrSettings =>
+      'Open Speech Recognition Settings';
+
+  @override
+  String get speakingEngineOpenTtsSettings => 'Open Speech Synthesis Settings';
+
+  @override
+  String get speakingEngineAsrNotReady =>
+      'The on-device speech recognition model is not ready. Download it in Speech Recognition settings first.';
+
+  @override
+  String get speakingEngineDashscopeKeyMissing =>
+      'DashScope API key is missing, so AI speech services are unavailable.';
+
+  @override
+  String get speakingEngineSourceAi => 'AI';
+
+  @override
+  String get speakingEngineSourceLocal => 'On-device';
+
+  @override
+  String get speakingEngineSummaryAsr => 'ASR';
+
+  @override
+  String get speakingEngineSummaryTts => 'TTS';
+
+  @override
+  String get speakingEngineSelectConfiguredLlm =>
+      'The current model is not configured. Choose a configured model.';
+
+  @override
+  String get speakingEngineTtsNotReady =>
+      'The on-device speech synthesis model is not ready. A download prompt will appear on first playback.';
 }

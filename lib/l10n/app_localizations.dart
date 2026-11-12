@@ -10555,6 +10555,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Voice preview failed.'**
   String get aiSpeakingPreviewFailed;
+
+  /// No description provided for @speakingEngineSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking Engine'**
+  String get speakingEngineSettingsTitle;
+
+  /// No description provided for @speakingEngineAsrSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech Recognition'**
+  String get speakingEngineAsrSection;
+
+  /// No description provided for @speakingEngineTtsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech Synthesis'**
+  String get speakingEngineTtsSection;
+
+  /// No description provided for @speakingEngineLlmSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Language Model'**
+  String get speakingEngineLlmSection;
+
+  /// No description provided for @speakingEngineLlmDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a model configured in AI Settings.'**
+  String get speakingEngineLlmDescription;
+
+  /// No description provided for @speakingEngineAsrAi.
+  ///
+  /// In en, this message translates to:
+  /// **'AI speech recognition'**
+  String get speakingEngineAsrAi;
+
+  /// No description provided for @speakingEngineAsrAiDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Real-time recognition through DashScope.'**
+  String get speakingEngineAsrAiDescription;
+
+  /// No description provided for @speakingEngineAsrLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'On-device speech recognition'**
+  String get speakingEngineAsrLocal;
+
+  /// No description provided for @speakingEngineAsrLocalDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the offline model from Speech Recognition settings.'**
+  String get speakingEngineAsrLocalDescription;
+
+  /// No description provided for @speakingEngineTtsAi.
+  ///
+  /// In en, this message translates to:
+  /// **'AI speech synthesis'**
+  String get speakingEngineTtsAi;
+
+  /// No description provided for @speakingEngineTtsAiDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Synthesize replies through DashScope.'**
+  String get speakingEngineTtsAiDescription;
+
+  /// No description provided for @speakingEngineTtsLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'On-device speech synthesis'**
+  String get speakingEngineTtsLocal;
+
+  /// No description provided for @speakingEngineTtsLocalDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the engine and voice from Speech Synthesis settings.'**
+  String get speakingEngineTtsLocalDescription;
+
+  /// No description provided for @speakingEngineNoConfiguredLlm.
+  ///
+  /// In en, this message translates to:
+  /// **'No language model is configured. Add an API key in AI Settings first.'**
+  String get speakingEngineNoConfiguredLlm;
+
+  /// No description provided for @speakingEngineOpenAiSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open AI Settings'**
+  String get speakingEngineOpenAiSettings;
+
+  /// No description provided for @speakingEngineOpenAsrSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Speech Recognition Settings'**
+  String get speakingEngineOpenAsrSettings;
+
+  /// No description provided for @speakingEngineOpenTtsSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Speech Synthesis Settings'**
+  String get speakingEngineOpenTtsSettings;
+
+  /// No description provided for @speakingEngineAsrNotReady.
+  ///
+  /// In en, this message translates to:
+  /// **'The on-device speech recognition model is not ready. Download it in Speech Recognition settings first.'**
+  String get speakingEngineAsrNotReady;
+
+  /// No description provided for @speakingEngineDashscopeKeyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'DashScope API key is missing, so AI speech services are unavailable.'**
+  String get speakingEngineDashscopeKeyMissing;
+
+  /// No description provided for @speakingEngineSourceAi.
+  ///
+  /// In en, this message translates to:
+  /// **'AI'**
+  String get speakingEngineSourceAi;
+
+  /// No description provided for @speakingEngineSourceLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'On-device'**
+  String get speakingEngineSourceLocal;
+
+  /// No description provided for @speakingEngineSummaryAsr.
+  ///
+  /// In en, this message translates to:
+  /// **'ASR'**
+  String get speakingEngineSummaryAsr;
+
+  /// No description provided for @speakingEngineSummaryTts.
+  ///
+  /// In en, this message translates to:
+  /// **'TTS'**
+  String get speakingEngineSummaryTts;
+
+  /// No description provided for @speakingEngineSelectConfiguredLlm.
+  ///
+  /// In en, this message translates to:
+  /// **'The current model is not configured. Choose a configured model.'**
+  String get speakingEngineSelectConfiguredLlm;
+
+  /// No description provided for @speakingEngineTtsNotReady.
+  ///
+  /// In en, this message translates to:
+  /// **'The on-device speech synthesis model is not ready. A download prompt will appear on first playback.'**
+  String get speakingEngineTtsNotReady;
 }
 
 class _AppLocalizationsDelegate

@@ -2851,5 +2851,32 @@
   "aiSpeakingKeyMissing": "Not configured",
   "aiSpeakingCustomModel": "Enter a model name below",
   "aiSpeakingInvalidBaseUrl": "Enter a valid http(s) URL",
-  "aiSpeakingPreviewFailed": "Voice preview failed."
+  "aiSpeakingPreviewFailed": "Voice preview failed.",
+  "speakingEngineSettingsTitle": "Speaking Engine",
+  "speakingEngineAsrSection": "Speech Recognition",
+  "speakingEngineTtsSection": "Speech Synthesis",
+  "speakingEngineLlmSection": "Language Model",
+  "speakingEngineLlmDescription": "Choose a model configured in AI Settings.",
+  "speakingEngineAsrAi": "AI speech recognition",
+  "speakingEngineAsrAiDescription": "Real-time recognition through DashScope.",
+  "speakingEngineAsrLocal": "On-device speech recognition",
+  "speakingEngineAsrLocalDescription": "Use the offline model from Speech Recognition settings.",
+  "speakingEngineTtsAi": "AI speech synthesis",
+  "speakingEngineTtsAiDescription": "Synthesize replies through DashScope.",
+  "speakingEngineTtsLocal": "On-device speech synthesis",
+  "speakingEngineTtsLocalDescription": "Use the engine and voice from Speech Synthesis settings.",
+  "speakingEngineNoConfiguredLlm": "No language model is configured. Add an API key in AI Settings first.",
+  "speakingEngineOpenAiSettings": "Open AI Settings",
+  "speakingEngineOpenAsrSettings": "Open Speech Recognition Settings",
+  "speakingEngineOpenTtsSettings": "Open Speech Synthesis Settings",
+  "speakingEngineAsrNotReady": "The on-device speech recognition model is not ready. Download it in Speech Recognition settings first.",
+  "speakingEngineDashscopeKeyMissing": "DashScope API key is missing, so AI speech services are unavailable.",
+  "speakingEngineSourceAi": "AI",
+  "speakingEngineSourceLocal": "On-device",
+  "speakingEngineSummaryAsr": "ASR",
+  "speakingEngineSummaryTts": "TTS",
+  "speakingEngineSelectConfiguredLlm": "The current model is not configured. Choose a configured model.",
+  "speakingEngineTtsNotReady": "The on-device speech synthesis model is not ready. A download prompt will appear on first playback."
 }
+
+

@@ -47,7 +47,9 @@ import 'features/onboarding_survey/providers/onboarding_survey_provider.dart';
 import 'features/remote_config/remote_config_providers.dart';
 import 'features/remote_config/remote_config_service.dart';
 import 'features/ai_speaking/models/ai_speaking_settings.dart';
+import 'features/ai_speaking/models/speaking_engine_settings.dart';
 import 'features/ai_speaking/providers/ai_speaking_settings_provider.dart';
+import 'features/ai_speaking/providers/speaking_engine_settings_provider.dart';
 
 void main() async {
   final startupTrace = StartupTrace();
@@ -129,6 +131,11 @@ void main() async {
   // AI 设置同步预读：进入练习页时无需等待异步 hydrate 即可展示已选供应商。
   final initialAiSpeakingSettings = AiSpeakingSettings.fromPrefsSync(prefs);
 
+  // 口语引擎设置同步预读：练习页首帧即需知道走本地还是云端 ASR/TTS。
+  final initialSpeakingEngineSettings = SpeakingEngineSettings.fromPrefsSync(
+    prefs,
+  );
+
   // 各学习子阶段用户偏好(按槽位)同步预读:入口弹窗 / 播放器进入时需立即拿到记忆值。
   final initialIntensiveListenPrefs = intensiveListenPrefsFromPrefsSync(prefs);
   final initialBlindListenPrefs = blindListenPrefsFromPrefsSync(prefs);
@@ -178,6 +185,9 @@ void main() async {
           initialTtsSettingsProvider.overrideWithValue(initialTtsSettings),
           initialAiSpeakingSettingsProvider.overrideWithValue(
             initialAiSpeakingSettings,
+          ),
+          initialSpeakingEngineSettingsProvider.overrideWithValue(
+            initialSpeakingEngineSettings,
           ),
           initialIntensiveListenPrefsProvider.overrideWithValue(
             initialIntensiveListenPrefs,

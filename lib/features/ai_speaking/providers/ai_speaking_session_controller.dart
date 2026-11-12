@@ -11,8 +11,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../models/speech_practice_models.dart';
+import '../../../providers/asr_model_installation_provider.dart';
+import '../../../providers/offline_asr_settings_provider.dart';
 import '../../../providers/short_audio_player_provider.dart';
+import '../../../providers/tts/tts_controller_provider.dart';
 import '../../../services/pronunciation/local_audio_clip_player.dart';
+import '../../../services/recording_service.dart';
+import '../../../services/speech_practice_platform.dart';
 import '../data/ai_speaking_credential_store.dart';
 import '../models/ai_speaking_message.dart';
 import '../models/ai_speaking_session_state.dart';
@@ -22,6 +28,7 @@ import '../services/aliyun_realtime_asr_client.dart';
 import '../services/aliyun_tts_client.dart';
 import '../services/pcm_recorder.dart';
 import 'ai_speaking_settings_provider.dart';
+import 'speaking_engine_settings_provider.dart';
 
 final pcmRecorderProvider = Provider<PcmRecorder>((ref) {
   final recorder = RecordPcmRecorder();
@@ -41,6 +48,41 @@ final aiChatClientProvider = Provider<AiChatClient>(
 
 final aiTtsClientProvider = Provider<AiTtsClient>((ref) => AliyunTtsClient());
 
+/// 录音服务工厂；测试可替换为受控实例。
+typedef AiSpeakingRecordingServiceFactory = RecordingService Function(
+  SpeechPracticeBackend backend,
+);
+
+final aiSpeakingRecordingServiceFactoryProvider =
+    Provider<AiSpeakingRecordingServiceFactory>((ref) => RecordingService.new);
+
+/// AI 口语对本地语音合成的最小依赖边界。
+abstract interface class AiSpeakingLocalTts {
+  Future<AudioPlaybackResult> speak(String text, {required String key});
+
+  Future<void> stop();
+}
+
+class _TtsControllerLocalTts implements AiSpeakingLocalTts {
+  _TtsControllerLocalTts(this._ref);
+
+  final Ref _ref;
+
+  @override
+  Future<AudioPlaybackResult> speak(String text, {required String key}) {
+    return _ref
+        .read(ttsControllerProvider.notifier)
+        .speakWithResult(text, key: key);
+  }
+
+  @override
+  Future<void> stop() => _ref.read(ttsControllerProvider.notifier).stop();
+}
+
+final aiSpeakingLocalTtsProvider = Provider<AiSpeakingLocalTts>(
+  (ref) => _TtsControllerLocalTts(ref),
+);
+
 class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   final _uuid = const Uuid();
 
@@ -48,6 +90,10 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   StreamSubscription<AsrTranscriptEvent>? _asrSubscription;
   StreamSubscription<Uint8List>? _pcmSubscription;
   PcmRecorder? _recorder;
+  RecordingService? _localRecordingService;
+  StreamSubscription<SpeechPracticeEvent>? _localAsrSubscription;
+  String? _localPromptId;
+  bool _lastTtsWasLocal = false;
   CancelToken? _chatCancelToken;
   CancelToken? _ttsCancelToken;
   int _turnId = 0;
@@ -80,24 +126,35 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     }
 
     final settings = ref.read(aiSpeakingSettingsProvider);
+    final engineSettings = ref.read(speakingEngineSettingsProvider);
+    // 只有链路中仍使用 AI 语音服务时才要求 DashScope Key。
+    final needsDashscopeKey =
+        !engineSettings.usesLocalAsr || !engineSettings.usesLocalTts;
     String? llmKey;
     String? dashscopeKey;
     try {
       final store = ref.read(aiSpeakingCredentialStoreProvider);
       llmKey = await store.readLlmApiKey(settings.llm.provider);
-      dashscopeKey = await store.readDashscopeApiKey();
+      if (needsDashscopeKey) {
+        dashscopeKey = await store.readDashscopeApiKey();
+      }
     } on AiSpeakingCredentialStoreException catch (error) {
       _setError(AiSpeakingErrorKind.missingConfig, error.message);
       return;
     }
     if (llmKey == null ||
         llmKey.trim().isEmpty ||
-        dashscopeKey == null ||
-        dashscopeKey.trim().isEmpty) {
+        (needsDashscopeKey &&
+            (dashscopeKey == null || dashscopeKey.trim().isEmpty))) {
       _setError(
         AiSpeakingErrorKind.missingConfig,
-        '请先在设置页填写大模型与 DashScope 的 API Key',
+        needsDashscopeKey
+            ? '请先在设置页填写大模型与 DashScope 的 API Key'
+            : '请先在设置页填写大模型 API Key',
       );
+      return;
+    }
+    if (engineSettings.usesLocalAsr && !await _ensureLocalAsrReady()) {
       return;
     }
 
@@ -109,13 +166,18 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
 
     _turnId++;
     final turnId = _turnId;
+    if (engineSettings.usesLocalAsr) {
+      await _startLocalListening(turnId);
+      return;
+    }
     RealtimeAsrSession? asrSession;
     PcmRecorder? recorder;
     late final Stream<Uint8List> pcmStream;
+    final dashscopeApiKey = dashscopeKey?.trim() ?? '';
     try {
       asrSession = await ref
           .read(realtimeAsrClientProvider)
-          .start(config: settings.speech, apiKey: dashscopeKey.trim());
+          .start(config: settings.speech, apiKey: dashscopeApiKey);
       if (!_isActive(turnId)) {
         await asrSession.cancel();
         return;
@@ -176,6 +238,10 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     if (state.phase != AiSpeakingPhase.listening) return;
     final turnId = _turnId;
     state = state.copyWith(phase: AiSpeakingPhase.finalizing);
+    if (_localRecordingService != null) {
+      await _stopLocalListening(turnId);
+      return;
+    }
 
     await _pcmSubscription?.cancel();
     _pcmSubscription = null;
@@ -288,7 +354,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     _turnId++;
     _chatCancelToken?.cancel();
     _ttsCancelToken?.cancel();
-    unawaited(ref.read(shortAudioPlayerProvider).stop());
+    _stopTtsPlayback();
     await _cleanupAsr();
     state = const AiSpeakingSessionState();
   }
@@ -338,7 +404,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     if (state.phase != AiSpeakingPhase.speaking) return;
     _turnId++;
     _ttsCancelToken?.cancel();
-    unawaited(ref.read(shortAudioPlayerProvider).stop());
+    _stopTtsPlayback();
     state = state.copyWith(phase: AiSpeakingPhase.idle, clearError: true);
   }
 
@@ -353,7 +419,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     _turnId++;
     _chatCancelToken?.cancel();
     _ttsCancelToken?.cancel();
-    unawaited(ref.read(shortAudioPlayerProvider).stop());
+    _stopTtsPlayback();
     unawaited(_cleanupAsr());
     if (state.phase != AiSpeakingPhase.idle) {
       state = state.copyWith(phase: AiSpeakingPhase.idle, clearError: true);
@@ -480,6 +546,10 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     String text,
   ) async {
     if (!_isActive(turnId)) return;
+    if (ref.read(speakingEngineSettingsProvider).usesLocalTts) {
+      await _speakWithLocalTts(turnId, assistantId, text);
+      return;
+    }
     String? apiKey;
     try {
       apiKey = await ref
@@ -568,7 +638,193 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     );
   }
 
+  /// 确保本地离线识别模型已下载并加载到内存。
+  Future<bool> _ensureLocalAsrReady() async {
+    final asrSettings = ref.read(offlineAsrSettingsProvider);
+    // 平台识别（如 Apple Speech）不需要下载本地模型。
+    if (asrSettings.backend == AsrBackend.platform) return true;
+    if (asrSettings.isOfflineReady) return true;
+    try {
+      await ref
+          .read(asrModelInstallationGateProvider)
+          .ensureInstallationStatesLoaded();
+      await ref.read(offlineAsrSettingsProvider.notifier).loadEngine();
+    } on Object catch (error) {
+      _setError(AiSpeakingErrorKind.asrFailed, '本地语音识别初始化失败：$error');
+      return false;
+    }
+    if (ref.read(offlineAsrSettingsProvider).isOfflineReady) return true;
+    _setError(AiSpeakingErrorKind.asrFailed, '本地语音识别模型尚未就绪，请先在语音识别设置中下载并启用模型');
+    return false;
+  }
+
+  /// 启动本地录音；识别在停止后由离线模型完成。
+  Future<void> _startLocalListening(int turnId) async {
+    final promptId = 'ai-speaking-${_uuid.v4()}';
+    final service = ref.read(aiSpeakingRecordingServiceFactoryProvider)(
+      ref.read(speechPracticeBackendProvider),
+    );
+    _localRecordingService = service;
+    _localPromptId = promptId;
+    _localAsrSubscription = service.events.listen(
+      (event) {
+        if (!_isActive(turnId)) return;
+        if (event.type != SpeechPracticeEventType.partialTranscriptUpdated) {
+          return;
+        }
+        final transcript = event.transcript?.trim() ?? '';
+        if (transcript.isEmpty) return;
+        state = state.copyWith(partialTranscript: transcript);
+      },
+      onError: (Object error) {
+        if (!_isActive(turnId)) return;
+        _setError(AiSpeakingErrorKind.asrFailed, '语音识别失败：$error');
+        unawaited(_cleanupAsr());
+      },
+    );
+    final usesPlatformRecognition =
+        ref.read(offlineAsrSettingsProvider).backend == AsrBackend.platform;
+    try {
+      await service.startRecording(
+        promptId: promptId,
+        recognitionEnabled: usesPlatformRecognition,
+      );
+    } on Object catch (error) {
+      await _cleanupAsr();
+      if (_isActive(turnId)) {
+        _setError(AiSpeakingErrorKind.asrFailed, '启动语音识别失败：$error');
+      }
+      return;
+    }
+    if (!_isActive(turnId)) {
+      await _cleanupAsr();
+      return;
+    }
+    state = state.copyWith(
+      phase: AiSpeakingPhase.listening,
+      partialTranscript: '',
+      clearError: true,
+    );
+  }
+
+  /// 停止本地录音并等待离线模型给出最终文本。
+  Future<void> _stopLocalListening(int turnId) async {
+    final service = _localRecordingService;
+    final promptId = _localPromptId;
+    if (service == null || promptId == null) {
+      await _cleanupAsr();
+      if (!_isActive(turnId)) return;
+      state = state.copyWith(
+        phase: AiSpeakingPhase.idle,
+        partialTranscript: '',
+        clearError: true,
+      );
+      return;
+    }
+
+    String? transcript;
+    String? errorMessage;
+    try {
+      final stopped = await service.stopSession(promptId: promptId);
+      final filePath = stopped.filePath;
+      if (stopped.errorCode != null) {
+        errorMessage = stopped.errorMessage ?? '停止录音失败';
+      } else if (filePath == null || filePath.isEmpty) {
+        errorMessage = '录音文件缺失';
+      } else {
+        final result = await service.waitForTranscript(
+          filePath: filePath,
+          // 离线模型推理通常需要数秒，给足超时时间。
+          timeout: const Duration(seconds: 30),
+        );
+        if (result.errorCode != null) {
+          errorMessage = result.errorMessage ?? '本地语音识别失败';
+        } else {
+          transcript = result.finalTranscript;
+        }
+      }
+    } on Object catch (error) {
+      errorMessage = '本地语音识别失败：$error';
+    }
+    await _cleanupAsr();
+    if (!_isActive(turnId)) return;
+    if (errorMessage != null) {
+      _setError(AiSpeakingErrorKind.asrFailed, errorMessage);
+      return;
+    }
+    final normalized = (transcript ?? '').trim();
+    if (normalized.isEmpty) {
+      state = state.copyWith(
+        phase: AiSpeakingPhase.idle,
+        partialTranscript: '',
+        clearError: true,
+      );
+      return;
+    }
+    state = state.copyWith(partialTranscript: '', clearError: true);
+    await _sendUserTurn(normalized, turnId);
+  }
+
+  /// 使用语音合成设置中的本地引擎朗读回复。
+  Future<void> _speakWithLocalTts(
+    int turnId,
+    String assistantId,
+    String text,
+  ) async {
+    state = state.copyWith(phase: AiSpeakingPhase.speaking, clearError: true);
+    _lastTtsWasLocal = true;
+    late final AudioPlaybackResult result;
+    try {
+      result = await ref
+          .read(aiSpeakingLocalTtsProvider)
+          .speak(text, key: assistantId);
+    } on Object catch (error) {
+      _lastTtsWasLocal = false;
+      if (!_isActive(turnId)) return;
+      _setError(AiSpeakingErrorKind.ttsFailed, '本地语音合成失败：$error');
+      return;
+    }
+    if (!_isActive(turnId)) {
+      _lastTtsWasLocal = false;
+      return;
+    }
+    _lastTtsWasLocal = false;
+    if (result == AudioPlaybackResult.failed) {
+      _setError(AiSpeakingErrorKind.ttsFailed, '本地语音合成失败，请检查语音合成设置');
+      return;
+    }
+    if (result == AudioPlaybackResult.cancelled) return;
+    state = state.copyWith(phase: AiSpeakingPhase.idle, clearError: true);
+  }
+
+  /// 停止当前可能正在播放的 AI 或本地语音。
+  void _stopTtsPlayback() {
+    unawaited(ref.read(shortAudioPlayerProvider).stop());
+    if (_lastTtsWasLocal) {
+      unawaited(ref.read(aiSpeakingLocalTtsProvider).stop());
+      _lastTtsWasLocal = false;
+    }
+  }
+
   Future<void> _cleanupAsr() async {
+    await _localAsrSubscription?.cancel();
+    _localAsrSubscription = null;
+    final localService = _localRecordingService;
+    _localRecordingService = null;
+    _localPromptId = null;
+    if (localService != null) {
+      try {
+        await localService.cancelRecording(discardStoppedRecording: true);
+      } on Object {
+        // 录音已停止或服务已释放时忽略。
+      }
+      try {
+        await localService.dispose();
+      } on Object {
+        // 清理阶段不掩盖原始错误。
+      }
+    }
+
     await _pcmSubscription?.cancel();
     _pcmSubscription = null;
     await _asrSubscription?.cancel();

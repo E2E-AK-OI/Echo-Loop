@@ -13,14 +13,23 @@ import 'package:echo_loop/features/ai_speaking/models/ai_llm_provider.dart';
 import 'package:echo_loop/features/ai_speaking/models/ai_speaking_message.dart';
 import 'package:echo_loop/features/ai_speaking/models/ai_speaking_session_state.dart';
 import 'package:echo_loop/features/ai_speaking/models/ai_speaking_settings.dart';
+import 'package:echo_loop/features/ai_speaking/models/speaking_engine_settings.dart';
 import 'package:echo_loop/features/ai_speaking/providers/ai_speaking_session_controller.dart';
 import 'package:echo_loop/features/ai_speaking/providers/ai_speaking_settings_provider.dart';
+import 'package:echo_loop/features/ai_speaking/providers/speaking_engine_settings_provider.dart';
 import 'package:echo_loop/features/ai_speaking/services/ai_chat_client.dart';
 import 'package:echo_loop/features/ai_speaking/services/ai_speaking_permission_service.dart';
 import 'package:echo_loop/features/ai_speaking/services/aliyun_realtime_asr_client.dart';
 import 'package:echo_loop/features/ai_speaking/services/aliyun_tts_client.dart';
 import 'package:echo_loop/features/ai_speaking/services/pcm_recorder.dart';
+import 'package:echo_loop/models/speech_practice_models.dart';
+import 'package:echo_loop/providers/asr_model_installation_gate.dart';
+import 'package:echo_loop/providers/asr_model_installation_provider.dart';
+import 'package:echo_loop/services/asr/asr_model_manager.dart';
+import 'package:echo_loop/providers/offline_asr_settings_provider.dart';
 import 'package:echo_loop/providers/short_audio_player_provider.dart';
+import 'package:echo_loop/services/recording_service.dart';
+import 'package:echo_loop/services/speech_practice_platform.dart';
 import 'package:echo_loop/services/pronunciation/local_audio_clip_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +51,16 @@ class _MockPermissionService extends Mock
 class _MockCredentialStore extends Mock implements AiSpeakingCredentialStore {}
 
 class _MockLocalAudioClipPlayer extends Mock implements LocalAudioClipPlayer {}
+
+class _MockRecordingService extends Mock implements RecordingService {}
+
+class _MockLocalTts extends Mock implements AiSpeakingLocalTts {}
+
+class _MockSpeechPracticeBackend extends Mock
+    implements SpeechPracticeBackend {}
+
+class _MockAsrModelInstallationGate extends Mock
+    implements AsrModelInstallationGate {}
 
 /// 模拟 record 插件：dispose 后不能再次 start，用于覆盖连续多轮录音。
 class _SingleUsePcmRecorder implements PcmRecorder {
@@ -72,6 +91,27 @@ class _SingleUsePcmRecorder implements PcmRecorder {
   }
 }
 
+OfflineAsrSettingsState _offlineAsrState({
+  required bool isReady,
+  AsrBackend backend = AsrBackend.offline,
+}) {
+  final model = availableModels.firstWhere(
+    (candidate) => candidate.id == 'whisper-base-en-int8',
+  );
+  return OfflineAsrSettingsState(
+    backend: backend,
+    engineReady: isReady,
+    recommendedModel: model,
+    modelStates: {
+      model.id: AsrModelState(
+        downloadStatus: isReady
+            ? AsrModelDownloadStatus.downloaded
+            : AsrModelDownloadStatus.notDownloaded,
+      ),
+    },
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -84,6 +124,8 @@ void main() {
     registerFallbackValue('');
     registerFallbackValue(Uint8List(0));
     registerFallbackValue(0);
+    registerFallbackValue(false);
+    registerFallbackValue(Duration.zero);
   });
 
   late _MockPcmRecorder recorder;
@@ -94,8 +136,12 @@ void main() {
   late _MockPermissionService permission;
   late _MockCredentialStore credentialStore;
   late _MockLocalAudioClipPlayer player;
+  late _MockRecordingService localRecordingService;
+  late _MockLocalTts localTts;
+  late _MockAsrModelInstallationGate installationGate;
   late StreamController<AsrTranscriptEvent> asrEvents;
   late StreamController<Uint8List> pcmEvents;
+  late StreamController<SpeechPracticeEvent> localSpeechEvents;
 
   setUp(() {
     recorder = _MockPcmRecorder();
@@ -106,8 +152,12 @@ void main() {
     permission = _MockPermissionService();
     credentialStore = _MockCredentialStore();
     player = _MockLocalAudioClipPlayer();
+    localRecordingService = _MockRecordingService();
+    localTts = _MockLocalTts();
+    installationGate = _MockAsrModelInstallationGate();
     asrEvents = StreamController<AsrTranscriptEvent>.broadcast();
     pcmEvents = StreamController<Uint8List>.broadcast();
+    localSpeechEvents = StreamController<SpeechPracticeEvent>.broadcast();
 
     when(() => asrSession.events).thenAnswer((_) => asrEvents.stream);
     when(() => asrSession.appendPcm(any())).thenReturn(null);
@@ -136,16 +186,58 @@ void main() {
     when(() => player.playFile(any(), playbackKey: any(named: 'playbackKey')))
         .thenAnswer((_) async => AudioPlaybackResult.completed);
     when(() => player.stop()).thenAnswer((_) async {});
+    when(() => localRecordingService.events)
+        .thenAnswer((_) => localSpeechEvents.stream);
+    when(
+      () => localRecordingService.startRecording(
+        promptId: any(named: 'promptId'),
+        recognitionEnabled: any(named: 'recognitionEnabled'),
+      ),
+    ).thenAnswer((_) async => '/tmp/local.wav');
+    when(
+      () => localRecordingService.stopSession(
+        promptId: any(named: 'promptId'),
+        effectiveDurationMs: any(named: 'effectiveDurationMs'),
+      ),
+    ).thenAnswer(
+      (_) async => const RecordingResult(filePath: '/tmp/local.wav'),
+    );
+    when(
+      () => localRecordingService.waitForTranscript(
+        filePath: any(named: 'filePath'),
+        timeout: any(named: 'timeout'),
+      ),
+    ).thenAnswer(
+      (_) async => const RecordingResult(
+        filePath: '/tmp/local.wav',
+        finalTranscript: 'Hello local',
+      ),
+    );
+    when(
+      () => localRecordingService.cancelRecording(
+        discardStoppedRecording: any(named: 'discardStoppedRecording'),
+      ),
+    ).thenAnswer((_) async {});
+    when(() => localRecordingService.dispose()).thenAnswer((_) async {});
+    when(() => localTts.speak(any(), key: any(named: 'key')))
+        .thenAnswer((_) async => AudioPlaybackResult.completed);
+    when(() => localTts.stop()).thenAnswer((_) async {});
+    when(() => installationGate.ensureInstallationStatesLoaded())
+        .thenAnswer((_) async {});
   });
 
   tearDown(() async {
     await asrEvents.close();
     await pcmEvents.close();
+    await localSpeechEvents.close();
   });
 
   ProviderContainer makeContainer({
     bool autoPlay = false,
     PcmRecorder? pcmRecorder,
+    SpeakingEngineSettings engineSettings = SpeakingEngineSettings.defaults,
+    bool localAsrReady = true,
+    AsrBackend localAsrBackend = AsrBackend.offline,
   }) {
     final settings = AiSpeakingSettings.defaults.copyWith(
       speech: AiSpeakingSettings.defaults.speech.copyWith(autoPlay: autoPlay),
@@ -160,6 +252,18 @@ void main() {
         aiSpeakingPermissionServiceProvider.overrideWithValue(permission),
         aiSpeakingCredentialStoreProvider.overrideWithValue(credentialStore),
         shortAudioPlayerProvider.overrideWithValue(player),
+        initialSpeakingEngineSettingsProvider.overrideWithValue(engineSettings),
+        aiSpeakingRecordingServiceFactoryProvider.overrideWithValue(
+          (_) => localRecordingService,
+        ),
+        aiSpeakingLocalTtsProvider.overrideWithValue(localTts),
+        speechPracticeBackendProvider.overrideWithValue(
+          _MockSpeechPracticeBackend(),
+        ),
+        initialOfflineAsrSettingsStateProvider.overrideWithValue(
+          _offlineAsrState(isReady: localAsrReady, backend: localAsrBackend),
+        ),
+        asrModelInstallationGateProvider.overrideWithValue(installationGate),
       ],
     );
     addTearDown(container.dispose);
@@ -415,6 +519,157 @@ void main() {
     expect(state.messages, isEmpty);
     expect(state.phase, AiSpeakingPhase.idle);
     expect(state.errorMessage, isNull);
+  });
+
+  test('本地 ASR 使用本地转录文本发送消息且不依赖 DashScope Key', () async {
+    when(() => credentialStore.readDashscopeApiKey())
+        .thenAnswer((_) async => null);
+    when(
+      () => chatClient.streamReply(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+        history: any(named: 'history'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) => Stream<String>.value('Hi there!'));
+    final container = makeContainer(
+      engineSettings: const SpeakingEngineSettings(
+        asrSource: SpeakingAsrSource.local,
+        ttsSource: SpeakingTtsSource.local,
+      ),
+    );
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.startListening();
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).phase,
+      AiSpeakingPhase.listening,
+    );
+    verify(
+      () => localRecordingService.startRecording(
+        promptId: any(named: 'promptId'),
+        recognitionEnabled: false,
+      ),
+    ).called(1);
+    verifyNever(
+      () => asrClient.start(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+      ),
+    );
+
+    localSpeechEvents.add(
+      const SpeechPracticeEvent(
+        type: SpeechPracticeEventType.partialTranscriptUpdated,
+        promptId: 'ai-speaking',
+        transcript: 'Hel',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).partialTranscript,
+      'Hel',
+    );
+
+    await controller.stopListening();
+
+    final state = container.read(aiSpeakingSessionControllerProvider);
+    expect(state.phase, AiSpeakingPhase.idle);
+    expect(state.messages.first.content, 'Hello local');
+    expect(state.messages.last.content, 'Hi there!');
+  });
+
+  test('本地 TTS 自动朗读走本地语音合成而不是 DashScope', () async {
+    when(
+      () => chatClient.streamReply(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+        history: any(named: 'history'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) => Stream<String>.value('Hello!'));
+    final container = makeContainer(
+      autoPlay: true,
+      engineSettings: const SpeakingEngineSettings(
+        asrSource: SpeakingAsrSource.local,
+        ttsSource: SpeakingTtsSource.local,
+      ),
+    );
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.sendText('Hi');
+
+    final state = container.read(aiSpeakingSessionControllerProvider);
+    expect(state.phase, AiSpeakingPhase.idle);
+    verify(() => localTts.speak('Hello!', key: state.messages.last.id))
+        .called(1);
+    verifyNever(
+      () => ttsClient.synthesizeToFile(
+        text: any(named: 'text'),
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    );
+    verifyNever(
+      () => player.playFile(any(), playbackKey: any(named: 'playbackKey')),
+    );
+  });
+
+  test('本地 ASR 使用平台识别后端时开启平台转录', () async {
+    final container = makeContainer(
+      engineSettings: const SpeakingEngineSettings(
+        asrSource: SpeakingAsrSource.local,
+        ttsSource: SpeakingTtsSource.local,
+      ),
+      localAsrBackend: AsrBackend.platform,
+      localAsrReady: false,
+    );
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.startListening();
+
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).phase,
+      AiSpeakingPhase.listening,
+    );
+    verify(
+      () => localRecordingService.startRecording(
+        promptId: any(named: 'promptId'),
+        recognitionEnabled: true,
+      ),
+    ).called(1);
+  });
+
+  test('本地 ASR 模型未就绪时提示 asrFailed 且不开始录音', () async {
+    final container = makeContainer(
+      engineSettings: const SpeakingEngineSettings(
+        asrSource: SpeakingAsrSource.local,
+        ttsSource: SpeakingTtsSource.local,
+      ),
+      localAsrReady: false,
+    );
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.startListening();
+
+    final state = container.read(aiSpeakingSessionControllerProvider);
+    expect(state.phase, AiSpeakingPhase.error);
+    expect(state.errorKind, AiSpeakingErrorKind.asrFailed);
+    verifyNever(
+      () => localRecordingService.startRecording(
+        promptId: any(named: 'promptId'),
+        recognitionEnabled: any(named: 'recognitionEnabled'),
+      ),
+    );
   });
 
   test('发送空白文本不产生消息', () async {

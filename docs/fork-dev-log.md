@@ -357,3 +357,16 @@ GRADLE_OPTS='-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2' \
 - 验证：定向测试 14 passed，`test/features/ai_speaking` 50 passed；全量 `flutter test` 5740 passed / 11 skipped / 24 failed（`subtitle_editor` 1 项并发 flaky，单独复跑通过；其余均既有 Windows/环境相关失败）；`flutter analyze` 0 error（213 issues，10 warning / 203 info），改动文件无 issue；`dart format` 0 changed。
 - 构建：APK 114,033,746 bytes，SHA-256 `1dba3c3d011f4537a8bc1d5ef00eb7cb120400d122117ddb83962a96dbbda826`，APK Signature Scheme v2 通过，727 条目 ZIP 校验通过；已覆盖 `android/app/release/app-dev-release.apk`。
 - 限制：未在 Android 真机上实际调用 flash 音色试听；音色表以 2026-10-29 官方文档为准，后续文档更新需同步。
+
+## 15. 口语引擎设置（2026-11-12）
+
+- 背景：AI 口语练习此前固定使用 DashScope 实时 ASR + DashScope TTS，本地离线识别与本地 TTS 虽已具备，但用户无法选择。本次在「设置 › 学习」新增「口语引擎」，分别配置语音识别、语音合成与大模型，并把应用版本升至 1.01。
+- 新增 `lib/features/ai_speaking/models/speaking_engine_settings.dart`：`SpeakingAsrSource { ai, local }`、`SpeakingTtsSource { ai, local }` 与 `SpeakingEngineSettings{asrSource,ttsSource}`；SharedPreferences 键 `speaking_engine_asr_source` / `speaking_engine_tts_source`，默认均为 AI，未知值回退 AI；`fromPrefsSync` 供启动预读。
+- 新增 `lib/features/ai_speaking/providers/speaking_engine_settings_provider.dart`：`initialSpeakingEngineSettingsProvider` + `SpeakingEngineSettingsNotifier`（`setAsrSource` / `setTtsSource` 持久化 `enum.name`）；`lib/main.dart` 启动时预读并 override。
+- 新增 `lib/features/ai_speaking/screens/speaking_engine_settings_screen.dart`：大模型区只列出已保存 API Key 的供应商（逐个 `readStatus`），可切换供应商、预设模型与温度；未配置时展示说明并跳转 AI 设置。ASR/TTS 区用 `RadioGroup` 二选一，副标题展示当前 AI 模型或本地引擎/音色；本地模型未就绪时展示提示并跳转对应设置页。
+- 会话控制器 `ai_speaking_session_controller.dart` 分流：`startListening()` 仅当 `!usesLocalAsr || !usesLocalTts` 时要求 DashScope Key；本地 ASR 先经 `asrModelInstallationGateProvider.ensureInstallationStatesLoaded()` + `offlineAsrSettingsProvider.notifier.loadEngine()` 确认就绪（`AsrBackend.platform` 平台识别直接放行），再用 `RecordingService` 录音，`stopSession` 后以 30 秒超时 `waitForTranscript`，启动录音时按后端传 `recognitionEnabled`（平台后端为 true）；本地 TTS 走 `TtsController.speakWithResult(text, key: assistantId)`，`stopSpeaking` 同时停本地 TTS 与 `shortAudioPlayer`。新增可注入点 `aiSpeakingRecordingServiceFactoryProvider`、`aiSpeakingLocalTtsProvider` 便于测试。
+- 设置页入口：`settings_screen.dart` 在 AI 设置之后、播放之前新增 tile，摘要形如「识别 AI · 合成 AI · deepseek-chat」，仅在 `aiSpeakingPermissionServiceProvider.isSupported` 时显示。
+- 版本号：`pubspec.yaml` 由 `1.0.46` 改为 `1.01.0+47`（pub_semver 不接受 `1.01`，Android versionCode 47 > 46）；设置页 `_displayVersion` 把 `1.01.0` 显示为 `1.01`，其他版本原样显示，`settings_screen_test` 的 `1.0.0` 断言不变。
+- 验证：`flutter analyze` 全仓 213 issues、0 error；定向 90 passed（`test/features/ai_speaking` 59、设置页 26、口语引擎模型 5）；全量 `flutter test` 5751 passed / 11 skipped / 23 failed（均既有 Windows/环境失败；`retell_recording_controller_test` 曾出现既有顺序 flaky，单跑通过）；`dart format` 0 changed。
+- 构建：直接调用 Gradle 时版本号来自 `android/local.properties` 的 `flutter.versionCode` / `flutter.versionName`，已在被 gitignore 的该文件中补齐 47 / 1.01.0；APK 114,033,746 bytes，SHA-256 `314051a015f92eded37b1107d7f33369b2ca58aca9b61fb8f54ed8127bd6f3c4`，v2 签名通过，727 条目 ZIP 校验通过，`libapp.so` 含新键字符串。已覆盖 `android/app/release/app-dev-release.apk`。
+- 限制：未在 Android 真机验证本地 ASR/TTS 与 Apple 平台识别后端；本地 ASR 为「录完再识别」，识别期间无实时字幕（本地引擎本身不提供流式）；本地 TTS 的模型下载弹窗仍由 `TtsController` 负责；LLM 选择复用 AI 设置中的单一当前配置，不保存多套预设。

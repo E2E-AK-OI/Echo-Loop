@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,7 @@ import 'package:echo_loop/screens/settings_screen.dart';
 import 'package:echo_loop/providers/settings_provider.dart';
 import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
+import 'package:echo_loop/features/ai_speaking/services/ai_speaking_permission_service.dart';
 import 'package:echo_loop/features/subscription/providers/subscription_availability.dart';
 import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:echo_loop/providers/listening_practice/listening_practice_provider.dart';
@@ -96,6 +98,7 @@ void main() {
     StateProvider<bool>? simulatedChinaUserProvider,
     // 测试宿主（macOS/无 key）默认不支持订阅，这里默认置 true 以覆盖订阅入口 UI。
     bool subscriptionAvailable = true,
+    List<Override> extraOverrides = const [],
   }) {
     const recommendedModel = AsrModelInfo(
       id: 'whisper-base-en-int8',
@@ -128,6 +131,7 @@ void main() {
             : ref.watch(simulatedProvider);
       }),
       analyticsOverride(),
+      ...extraOverrides,
     ];
   }
 
@@ -692,7 +696,58 @@ void main() {
       });
     });
   });
+
+  group('口语引擎入口', () {
+    testWidgets('支持 AI 口语时显示口语引擎入口与引擎摘要', (tester) async {
+      final permission = _MockAiSpeakingPermissionService();
+      when(() => permission.isSupported).thenReturn(true);
+
+      await tester.pumpWidget(
+        createTestScreen(
+          const SettingsScreen(),
+          overrides: buildOverrides(
+            extraOverrides: [
+              aiSpeakingPermissionServiceProvider.overrideWithValue(permission),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('Speaking Engine'), 200);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Speaking Engine'), findsOneWidget);
+      expect(find.text('ASR AI · TTS AI · deepseek-chat'), findsOneWidget);
+    });
+
+    testWidgets('1.01.0 版本号显示为 1.01', (tester) async {
+      await tester.pumpWidget(
+        createTestScreen(
+          const SettingsScreen(),
+          overrides: buildOverrides(
+            packageInfo: PackageInfo(
+              appName: 'Echo Loop',
+              packageName: 'top.echo-loop',
+              version: '1.01.0',
+              buildNumber: '47',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.textContaining('Version'), 200);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Version 1.01 (Debug)'), findsOneWidget);
+    });
+  });
 }
+
+/// 测试用 AI 口语权限服务，可指定是否支持当前平台。
+class _MockAiSpeakingPermissionService extends Mock
+    implements AiSpeakingPermissionService {}
 
 /// 测试用 DeveloperOptions Notifier，固定返回指定值。
 class _TestDeveloperOptions extends DeveloperOptions {
