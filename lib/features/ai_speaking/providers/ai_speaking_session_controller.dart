@@ -23,7 +23,13 @@ import '../services/aliyun_tts_client.dart';
 import '../services/pcm_recorder.dart';
 import 'ai_speaking_settings_provider.dart';
 
-final pcmRecorderProvider = Provider<PcmRecorder>((ref) => RecordPcmRecorder());
+final pcmRecorderProvider = Provider<PcmRecorder>((ref) {
+  final recorder = RecordPcmRecorder();
+  // 录音器由 provider 持有并在容器销毁时释放；每轮对话只 stop，
+  // 否则第二轮会对已 dispose 的原生录音器再次 start。
+  ref.onDispose(() => unawaited(recorder.dispose()));
+  return recorder;
+});
 
 final realtimeAsrClientProvider = Provider<RealtimeAsrClient>(
   (ref) => AliyunRealtimeAsrClient(),
@@ -119,13 +125,16 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
       pcmStream = await recorderInstance.start();
       if (!_isActive(turnId)) {
         await recorderInstance.stop();
-        await recorderInstance.dispose();
         await asrSession.cancel();
         return;
       }
     } on Object catch (error) {
       await asrSession?.cancel();
-      await recorder?.dispose();
+      try {
+        await recorder?.stop();
+      } on Object {
+        // 启动失败时录音器可能尚未真正开始，停止失败不应掩盖原始错误。
+      }
       if (_isActive(turnId)) {
         _setError(AiSpeakingErrorKind.asrFailed, '启动语音识别失败：$error');
       }
@@ -572,11 +581,6 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         await recorder.stop();
       } on Object {
         // 已停止或平台不支持重复 stop，忽略。
-      }
-      try {
-        await recorder.dispose();
-      } on Object {
-        // dispose 失败不影响会话状态。
       }
     }
 

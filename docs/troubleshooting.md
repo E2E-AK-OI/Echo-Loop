@@ -54,6 +54,7 @@
 - 7.44 纯端侧改造：删除登录/订阅后，旧测试要按功能边界删除而不是伪造登录态
 - 7.45 Android APK 构建：Gradle 9 不兼容，Gradle 8 需显式禁用 IPv6 与启用 TLSv1.2
 - 7.46 retell_recording_controller_test 整文件顺序敏感：前序用例残留状态会让第 6 项 did not complete
+- 7.47 AI 口语第二轮点话筒无反应：单例录音器被每轮 dispose 后再也起不来
 
 ---
 
@@ -332,3 +333,12 @@
 - 规则：该文件的失败先按「整文件顺序敏感」与「单用例编译错误/真实断言失败」区分；不要把它归因于纯端侧 AI 或设置页改动，也不要在功能收尾时用假状态掩盖。
 - 相关文件：`test/providers/retell_recording_controller_test.dart`、`lib/providers/retell_recording_controller_provider.dart`。
 - 修复时间：待定（记录于 2026-11-05）。
+
+### 7.47 AI 口语第二轮点话筒无反应：单例录音器被每轮 dispose 后再也起不来
+
+- 现象：AI 口语练习第一轮语音输入与 AI 回复的 TTS 均正常；第二次点右下角话筒没有反应，无法进入录音。页面若显示错误，会进入「语音识别失败」而不是正常录音。
+- 根因：`pcmRecorderProvider` 返回单例 `RecordPcmRecorder`，而 `_cleanupAsr()` 每轮结束都对它调用 `dispose()`。`record 6.2.1` 的 `AudioRecorder.dispose()` 会通知 Android 原生侧移除该 recorder；第二轮 `startListening()` 先启动 ASR，再对同一个已释放的录音器调用 `startStream()`，原生侧报 `Recorder has not yet been created or has already been disposed.`，被 catch 后进入 `asrFailed`。
+- 解法：录音器生命周期交给 provider——创建时注册 `ref.onDispose(() => unawaited(recorder.dispose()))`；每轮只 `stop()`，不再 `dispose()`；启动失败分支也只尝试 `stop()`，避免二次释放并掩盖原始异常。回归测试用「dispose 后再 start 抛 StateError」的假录音器覆盖连续两轮输入。
+- 规则：**能被多轮流程复用的平台资源（录音器、播放器、通道）不要在每个业务轮次 dispose；dispose 只放在 provider/页面所有者的生命周期收尾**。每轮只做 stop/reset，否则第二轮必然拿到已释放的原生句柄。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`（`pcmRecorderProvider`、`startListening()`、`_cleanupAsr()`）；测试 `test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`（`_SingleUsePcmRecorder`、`连续两轮语音输入都能重新开始录音`）。
+- 修复时间：2026-11-12。

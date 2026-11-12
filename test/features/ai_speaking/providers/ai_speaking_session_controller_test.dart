@@ -43,6 +43,35 @@ class _MockCredentialStore extends Mock implements AiSpeakingCredentialStore {}
 
 class _MockLocalAudioClipPlayer extends Mock implements LocalAudioClipPlayer {}
 
+/// 模拟 record 插件：dispose 后不能再次 start，用于覆盖连续多轮录音。
+class _SingleUsePcmRecorder implements PcmRecorder {
+  bool _isDisposed = false;
+  int startCount = 0;
+
+  @override
+  Future<bool> hasPermission() async => true;
+
+  @override
+  Future<Stream<Uint8List>> start({
+    int sampleRate = 16000,
+    int numChannels = 1,
+  }) async {
+    if (_isDisposed) {
+      throw StateError('录音器已释放');
+    }
+    startCount++;
+    return const Stream<Uint8List>.empty();
+  }
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {
+    _isDisposed = true;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -114,14 +143,17 @@ void main() {
     await pcmEvents.close();
   });
 
-  ProviderContainer makeContainer({bool autoPlay = false}) {
+  ProviderContainer makeContainer({
+    bool autoPlay = false,
+    PcmRecorder? pcmRecorder,
+  }) {
     final settings = AiSpeakingSettings.defaults.copyWith(
       speech: AiSpeakingSettings.defaults.speech.copyWith(autoPlay: autoPlay),
     );
     final container = ProviderContainer(
       overrides: [
         initialAiSpeakingSettingsProvider.overrideWithValue(settings),
-        pcmRecorderProvider.overrideWithValue(recorder),
+        pcmRecorderProvider.overrideWithValue(pcmRecorder ?? recorder),
         realtimeAsrClientProvider.overrideWithValue(asrClient),
         aiChatClientProvider.overrideWithValue(chatClient),
         aiTtsClientProvider.overrideWithValue(ttsClient),
@@ -219,6 +251,42 @@ void main() {
     expect(state.messages[1].role, AiSpeakingRole.assistant);
     expect(state.messages[1].content, 'Nice to meet you!');
     expect(state.messages[1].status, AiSpeakingMessageStatus.done);
+  });
+
+  test('连续两轮语音输入都能重新开始录音', () async {
+    when(() => asrSession.finish()).thenAnswer((_) async => 'Hello');
+    when(
+      () => chatClient.streamReply(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+        history: any(named: 'history'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) => Stream<String>.value('Hi!'));
+    final singleUseRecorder = _SingleUsePcmRecorder();
+    final container = makeContainer(pcmRecorder: singleUseRecorder);
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.startListening();
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).phase,
+      AiSpeakingPhase.listening,
+    );
+    await controller.stopListening();
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).phase,
+      AiSpeakingPhase.idle,
+    );
+
+    await controller.startListening();
+
+    final state = container.read(aiSpeakingSessionControllerProvider);
+    expect(state.phase, AiSpeakingPhase.listening);
+    expect(state.errorKind, isNull);
+    expect(singleUseRecorder.startCount, 2);
+    await controller.cancelListening();
   });
 
   test('ASR 部分结果写入 partialTranscript', () async {
