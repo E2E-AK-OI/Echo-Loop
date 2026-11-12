@@ -348,6 +348,7 @@
 - 现象：AI 设置中 `qwen-audio-3.1-tts-plus` + `longanlingxin_v3.1` 合成正常；切换到 `qwen-audio-3.1-tts-flash` 后，默认音色为 `Bella`，下拉框还有 `Emily`，合成请求返回「语音合成请求参数有误」。
 - 根因：旧实现把 flash 音色写死为 `['Bella', 'Emily']`，既缺少 DashScope 要求的 `_v3.1` 后缀，`Bella` 也不是 flash 的精品英文音色——`Bella_v3.1` 属于精品中文音色，其 voice 参数是 `loongbella_v3.1`。切模型时还把 `voices.first` 写回设置，导致 `model=qwen-audio-3.1-tts-flash` 与 `voice=Bella` 一起提交，DashScope 以 `InvalidParameter` 拒绝。
 - 解法：按官方文档把音色收敛为模型级目录：plus 提供 4 个旗舰音色（龙安灵心/许南川/龙安欢/龙安风悦）；flash 提供「精品英文音色」15 个（Emily、Luna、Eric、Luca、Abby、Annie、Ava、Beth、Betty、Cally、Cindy、Donna、Andy、Brian、David，均带 `_v3.1`）。新增 `AiSpeechConfig.normalizeTtsModel`（只保留 flash，其余回退 plus）、`voicesForModel`（返回对应目录）与 `resolveTtsVoice`（校验当前音色，非法时回退该模型首个）。`fromPrefsSync`、`setTtsModel`、`setTtsVoice` 统一走校验：历史 flash+Bella 自动迁移为 flash+`Emily_v3.1`；切换模型时同步修正音色并持久化。设置页下拉展示「中文名 (voice 参数)」，切换模型只调用 `setTtsModel`，由 notifier 完成模型与音色的原子更新。
+- 补充（2026-11-12）：flash 下拉框在英文名与 voice 参数之间展示官方口音与性别（如「Emily · 英式女声 (Emily_v3.1)」），覆盖 15 个精品英文音色；plus 暂不展示口音。
 - 规则：DashScope Qwen TTS 的 `voice` 必须属于当前 `model`，不能跨模型复用；模型切换时音色选择与持久化必须原子完成，不能只改 model 留下旧 voice。
 - 相关代码：`lib/features/ai_speaking/models/ai_speaking_settings.dart`（`AiTtsVoice`/`voicesForModel`/`resolveTtsVoice`）、`lib/features/ai_speaking/providers/ai_speaking_settings_provider.dart`（`setTtsModel`/`setTtsVoice`）、`lib/features/ai_speaking/screens/ai_speaking_settings_screen.dart`；测试 `test/features/ai_speaking/models/ai_speaking_settings_test.dart`（音色目录、跨模型回退、切换持久化）。
 - 修复时间：2026-11-12。

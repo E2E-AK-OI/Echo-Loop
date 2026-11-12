@@ -440,7 +440,7 @@ class _AiSpeakingSettingsScreenState
                           (voice) => DropdownMenuItem<String>(
                             value: voice.value,
                             child: Text(
-                              '${voice.label} (${voice.value})',
+                              voice.displayLabel,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),

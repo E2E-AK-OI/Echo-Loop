@@ -74,10 +74,19 @@ class AiLlmConfig {
 
 /// TTS 音色选项：label 用于界面展示，value 是 DashScope 的 voice 参数。
 class AiTtsVoice {
-  const AiTtsVoice({required this.label, required this.value});
+  const AiTtsVoice({required this.label, required this.value, this.accent});
 
   final String label;
   final String value;
+
+  /// 官方口音描述，例如「英式女声」「美式男声」；plus 音色暂无此字段。
+  final String? accent;
+
+  /// 下拉框展示文案：有口音时追加官方描述，并保留 voice 参数便于核对。
+  String get displayLabel {
+    final accentText = accent == null ? '' : ' · $accent';
+    return '$label$accentText ($value)';
+  }
 }
 
 /// 语音服务配置。
@@ -108,21 +117,21 @@ class AiSpeechConfig {
 
   /// flash 的“精品英文音色”共 15 个，是英语口语练习的主要候选。
   static const _flashEnglishVoices = <AiTtsVoice>[
-    AiTtsVoice(label: 'Emily', value: defaultFlashTtsVoice),
-    AiTtsVoice(label: 'Luna', value: 'Luna_v3.1'),
-    AiTtsVoice(label: 'Eric', value: 'Eric_v3.1'),
-    AiTtsVoice(label: 'Luca', value: 'Luca_v3.1'),
-    AiTtsVoice(label: 'Abby', value: 'Abby_v3.1'),
-    AiTtsVoice(label: 'Annie', value: 'Annie_v3.1'),
-    AiTtsVoice(label: 'Ava', value: 'Ava_v3.1'),
-    AiTtsVoice(label: 'Beth', value: 'Beth_v3.1'),
-    AiTtsVoice(label: 'Betty', value: 'Betty_v3.1'),
-    AiTtsVoice(label: 'Cally', value: 'Cally_v3.1'),
-    AiTtsVoice(label: 'Cindy', value: 'Cindy_v3.1'),
-    AiTtsVoice(label: 'Donna', value: 'Donna_v3.1'),
-    AiTtsVoice(label: 'Andy', value: 'Andy_v3.1'),
-    AiTtsVoice(label: 'Brian', value: 'Brian_v3.1'),
-    AiTtsVoice(label: 'David', value: 'David_v3.1'),
+    AiTtsVoice(label: 'Emily', value: defaultFlashTtsVoice, accent: '英式女声'),
+    AiTtsVoice(label: 'Luna', value: 'Luna_v3.1', accent: '英式女声'),
+    AiTtsVoice(label: 'Eric', value: 'Eric_v3.1', accent: '英式男声'),
+    AiTtsVoice(label: 'Luca', value: 'Luca_v3.1', accent: '英式男声'),
+    AiTtsVoice(label: 'Abby', value: 'Abby_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Annie', value: 'Annie_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Ava', value: 'Ava_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Beth', value: 'Beth_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Betty', value: 'Betty_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Cally', value: 'Cally_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Cindy', value: 'Cindy_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Donna', value: 'Donna_v3.1', accent: '美式女声'),
+    AiTtsVoice(label: 'Andy', value: 'Andy_v3.1', accent: '美式男声'),
+    AiTtsVoice(label: 'Brian', value: 'Brian_v3.1', accent: '美式男声'),
+    AiTtsVoice(label: 'David', value: 'David_v3.1', accent: '美式男声'),
   ];
 
   /// 当前支持的 TTS 模型，未知模型统一回退到 plus。

@@ -147,6 +147,45 @@ void main() {
       expect(values, isNot(contains('Bella')));
     });
 
+    test('flash 音色带官方口音信息', () {
+      final voices = AiSpeechConfig.voicesForModel(
+        AiSpeechConfig.flashTtsModel,
+      );
+
+      expect(
+        {for (final voice in voices) voice.value: voice.accent},
+        <String, String?>{
+          'Emily_v3.1': '英式女声',
+          'Luna_v3.1': '英式女声',
+          'Eric_v3.1': '英式男声',
+          'Luca_v3.1': '英式男声',
+          'Abby_v3.1': '美式女声',
+          'Annie_v3.1': '美式女声',
+          'Ava_v3.1': '美式女声',
+          'Beth_v3.1': '美式女声',
+          'Betty_v3.1': '美式女声',
+          'Cally_v3.1': '美式女声',
+          'Cindy_v3.1': '美式女声',
+          'Donna_v3.1': '美式女声',
+          'Andy_v3.1': '美式男声',
+          'Brian_v3.1': '美式男声',
+          'David_v3.1': '美式男声',
+        },
+      );
+    });
+
+    test('音色下拉文案包含口音与 voice 参数', () {
+      final flashVoice = AiSpeechConfig.voicesForModel(
+        AiSpeechConfig.flashTtsModel,
+      ).first;
+      final plusVoice = AiSpeechConfig.voicesForModel(
+        AiSpeechConfig.defaultTtsModel,
+      ).first;
+
+      expect(flashVoice.displayLabel, 'Emily · 英式女声 (Emily_v3.1)');
+      expect(plusVoice.displayLabel, '龙安灵心 (longanlingxin_v3.1)');
+    });
+
     test('跨模型音色回退到目标模型默认音色', () {
       expect(
         AiSpeechConfig.resolveTtsVoice(
