@@ -362,6 +362,12 @@ void main() {
     when(() => pcmStreamPlayer.flush()).thenAnswer((_) async {});
     when(() => pcmStreamPlayer.finish()).thenAnswer((_) async {});
     when(() => pcmStreamPlayer.stop()).thenAnswer((_) async {});
+    when(() => pcmStreamPlayer.getOutputRoute()).thenAnswer(
+      (_) async => PcmOutputRoute(
+        isSpeaker: voiceAudioSession.status.isSpeakerOutput,
+        isKnown: voiceAudioSession.status.isRouteKnown,
+      ),
+    );
   });
 
   tearDown(() async {
@@ -1950,6 +1956,96 @@ void main() {
     ).called(1);
   });
 
+  test('语音会话把外放误报为耳机时按 AudioTrack 路由关闭插话', () async {
+    when(() => asrSession.finish()).thenAnswer((_) async => 'Hello there');
+    final audio = StreamController<Uint8List>();
+    addTearDown(() async {
+      if (!audio.isClosed) await audio.close();
+    });
+    when(
+      () => chatClient.streamReply(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+        history: any(named: 'history'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) => Stream<String>.value('Hi!'));
+    when(
+      () => ttsStreamClient.synthesizeChunks(
+        textChunks: any(named: 'textChunks'),
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+        cancelToken: any(named: 'cancelToken'),
+      ),
+    ).thenAnswer((_) => audio.stream);
+    // 模拟设备连接列表误判：会话状态说是耳机，但 AudioTrack 实际走扬声器。
+    voiceAudioSession = _FakeVoiceAudioSession(
+      const VoiceAudioSessionStatus(
+        isSupported: true,
+        isSpeakerOutput: false,
+        isAecAvailable: true,
+        outputUsage: PcmOutputUsage.media,
+        isRouteKnown: true,
+      ),
+    );
+    when(() => pcmStreamPlayer.getOutputRoute()).thenAnswer(
+      (_) async => const PcmOutputRoute(isSpeaker: true, isKnown: true),
+    );
+    final container = makeContainer(
+      level: AiSpeakingLevel.advanced,
+      autoPlay: true,
+    );
+    final controller = container.read(
+      aiSpeakingSessionControllerProvider.notifier,
+    );
+
+    await controller.startSession();
+    for (var i = 0; i < 4; i++) {
+      pcmEvents.add(_pcmFrame(9000));
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+    }
+    for (var i = 0; i < 15; i++) {
+      pcmEvents.add(_pcmFrame(0));
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+    }
+    audio.add(Uint8List.fromList([1, 2]));
+    final speakingDeadline = DateTime.now().add(const Duration(seconds: 3));
+    while (container.read(aiSpeakingSessionControllerProvider).phase !=
+            AiSpeakingPhase.speaking &&
+        DateTime.now().isBefore(speakingDeadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    var state = container.read(aiSpeakingSessionControllerProvider);
+    expect(state.phase, AiSpeakingPhase.speaking);
+    expect(state.isVoiceBargeInAvailable, isFalse);
+
+    clearInteractions(asrClient);
+    for (var i = 0; i < 5; i++) {
+      pcmEvents.add(_pcmFrame(9000));
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    state = container.read(aiSpeakingSessionControllerProvider);
+    expect(state.phase, AiSpeakingPhase.speaking);
+    expect(state.messages.length, 2);
+    verifyNever(
+      () => asrClient.start(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+      ),
+    );
+    verifyNever(() => pcmStreamPlayer.stop());
+
+    await controller.stopSpeaking();
+    expect(
+      container.read(aiSpeakingSessionControllerProvider).phase,
+      AiSpeakingPhase.listening,
+    );
+  });
+
   test('高级档外放 AEC 可用时 duck 后确认用户插话', () async {
     when(() => asrSession.finish()).thenAnswer((_) async => 'Hello there');
     final audio = StreamController<Uint8List>();
@@ -2006,28 +2102,28 @@ void main() {
         DateTime.now().isBefore(speakingDeadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
-    // phase 进入 speaking 后，播放器启动与插话判别配置仍在异步收尾。
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // phase 进入 speaking 后，播放器启动与插话判别配置仍在异步收尾；
+    // 再等过 guard 的 400ms 最小播放窗口，避免测试人声落在窗口之前。
+    await Future<void>.delayed(const Duration(milliseconds: 800));
 
     var state = container.read(aiSpeakingSessionControllerProvider);
     expect(state.phase, AiSpeakingPhase.speaking);
     expect(state.isVoiceBargeInAvailable, isTrue);
 
     clearInteractions(pcmStreamPlayer);
-    // 先持续人声触发 duck，再用低电平模拟 AEC 收敛后的回声残留，
-    // 最后重新出现人声才应确认插话。
-    // 两声高电平足以触发 duck；随后立刻用低电平覆盖 180ms 的 AEC 收敛窗口。
-    for (var i = 0; i < 3; i++) {
+    // 先持续人声触发 duck，再用低电平覆盖 AEC 收敛窗口，最后重新出现
+    // 人声才应确认插话。首帧已越过最小播放窗口，5 帧高电平足以 duck。
+    for (var i = 0; i < 5; i++) {
       pcmEvents.add(_pcmFrame(9000));
-      await Future<void>.delayed(const Duration(milliseconds: 70));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     for (var i = 0; i < 3; i++) {
       pcmEvents.add(_pcmFrame(500));
-      await Future<void>.delayed(const Duration(milliseconds: 70));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    for (var i = 0; i < 8; i++) {
+    for (var i = 0; i < 6; i++) {
       pcmEvents.add(_pcmFrame(9000));
-      await Future<void>.delayed(const Duration(milliseconds: 70));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     await Future<void>.delayed(const Duration(milliseconds: 120));
 
@@ -2046,9 +2142,13 @@ void main() {
     ).called(2);
   });
 
-  test('高级档外放 duck 未能压低回声时关闭插话', () async {
+  test('高级档外放持续人声静音复核后确认插话并把插话音频交给新识别', () async {
     when(() => asrSession.finish()).thenAnswer((_) async => 'Hello there');
-    final audio = StreamController<Uint8List>();
+    final appended = <Uint8List>[];
+    when(() => asrSession.appendPcm(any())).thenAnswer((invocation) {
+      appended.add(invocation.positionalArguments.first as Uint8List);
+    });
+    final audio = StreamController<Uint8List>.broadcast();
     addTearDown(() async {
       if (!audio.isClosed) await audio.close();
     });
@@ -2103,27 +2203,70 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     // phase 进入 speaking 后，播放器启动与插话判别配置仍在异步收尾。
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // 再等过 400ms 最小播放窗口，确保首帧用户声音就能进入候选。
+    await Future<void>.delayed(const Duration(milliseconds: 800));
 
     var state = container.read(aiSpeakingSessionControllerProvider);
     expect(state.phase, AiSpeakingPhase.speaking);
     expect(state.isVoiceBargeInAvailable, isTrue);
 
     clearInteractions(pcmStreamPlayer);
-    // duck 后回声仍保持原电平，说明 AEC 没有生效，必须关闭插话。
-    for (var i = 0; i < 12; i++) {
-      pcmEvents.add(_pcmFrame(9000));
+    appended.clear();
+    // 用户持续以正常音量说话：duck 只改变 TTS 音量，用户自己的声音不会
+    // 下降，守卫应先静音 TTS 复核，再确认插话。
+    for (var i = 0; i < 20; i++) {
+      pcmEvents.add(_pcmFrame(2000));
       await Future<void>.delayed(const Duration(milliseconds: 70));
+    }
+    // 确认后新识别建连并补发插话音频；轮询等待异步建连完成。
+    final appendDeadline = DateTime.now().add(const Duration(seconds: 2));
+    while (appended.isEmpty && DateTime.now().isBefore(appendDeadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     await Future<void>.delayed(const Duration(milliseconds: 120));
 
     state = container.read(aiSpeakingSessionControllerProvider);
-    expect(state.phase, AiSpeakingPhase.speaking);
-    expect(state.isVoiceBargeInAvailable, isFalse);
+    expect(state.phase, AiSpeakingPhase.listening);
     expect(state.messages.length, 2);
-    expect(state.messages.last.wasInterrupted, isFalse);
+    expect(state.messages.last.wasInterrupted, isTrue);
+    // 新识别必须先收到插话音频，而不是 resume 之后的静音。
+    expect(appended, isNotEmpty);
+    final seededVoicedFrames = appended
+        .takeWhile(
+          (frame) =>
+              ByteData.sublistView(frame).getInt16(0, Endian.little) == 2000,
+        )
+        .length;
+    expect(seededVoicedFrames, greaterThanOrEqualTo(5));
+    verify(
+      () => asrClient.start(
+        config: any(named: 'config'),
+        apiKey: any(named: 'apiKey'),
+      ),
+    ).called(2);
     verify(() => pcmStreamPlayer.setVolume(0.12)).called(1);
-    verifyNever(() => pcmStreamPlayer.stop());
+    verify(() => pcmStreamPlayer.setVolume(0)).called(1);
+    verify(() => pcmStreamPlayer.stop()).called(1);
+
+    // 服务端可能一直不返回 final；客户端尾静音兜底必须把这轮插话收尾，
+    // 产生用户消息并进入回复，否则外放插话只会打断、不会被回答。
+    final replyDeadline = DateTime.now().add(const Duration(seconds: 2));
+    while (container
+                .read(aiSpeakingSessionControllerProvider)
+                .messages
+                .where((message) => message.role == AiSpeakingRole.user)
+                .length <
+            2 &&
+        DateTime.now().isBefore(replyDeadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    state = container.read(aiSpeakingSessionControllerProvider);
+    final userMessages = state.messages
+        .where((message) => message.role == AiSpeakingRole.user)
+        .toList();
+    expect(userMessages, hasLength(2));
+    expect(userMessages.last.content, 'Hello there');
+    verify(() => asrSession.finish()).called(2);
   });
 
   test('特级档由实时语音模型完成一轮对话并停止会话', () async {

@@ -129,26 +129,37 @@ class VoiceAudioSessionHandler(
     private data class OutputRoute(val isSpeaker: Boolean, val isKnown: Boolean)
 
     /**
-     * 有已连接的外接输出设备时按耳机处理，保持媒体路由即可。
+     * 只有明确的外接/私密输出设备才按耳机处理。
      *
-     * GET_DEVICES_OUTPUTS 返回的是「已连接」设备，不是正在使用的路由；
-     * 因此读不到时把 isKnown 置为 false，由上层关闭语音插话，避免把
-     * 未知路由误当成耳机后打开 VAD。
+     * GET_DEVICES_OUTPUTS 会把 TYPE_TELEPHONY、TYPE_UNKNOWN、TYPE_REMOTE_SUBMIX
+     * 等非播放设备也列出来；1.03.8 的宽泛判断因此可能把手机外放误判成耳机，
+     * 打开 VAD 后让 TTS 首词回声触发插话。这里只认明确的耳机/外接类型。
      */
     private fun readOutputRoute(): OutputRoute {
         return try {
             val hasExternal = audioManager
                 .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                .any { device ->
-                    device.type != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER &&
-                        device.type != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                }
+                .any { device -> device.type in externalOutputTypes }
             OutputRoute(isSpeaker = !hasExternal, isKnown = true)
         } catch (error: Exception) {
             Log.w(TAG, "read output devices failed: ${error.message}")
             OutputRoute(isSpeaker = true, isKnown = false)
         }
     }
+
+    private val externalOutputTypes = setOf(
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_USB_ACCESSORY,
+        AudioDeviceInfo.TYPE_HEARING_AID,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+        AudioDeviceInfo.TYPE_BLE_BROADCAST,
+    )
 
     @Suppress("DEPRECATION")
     private fun end() {

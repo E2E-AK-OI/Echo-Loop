@@ -9,6 +9,19 @@ import 'package:flutter/services.dart';
 /// 避免通话模式压低音乐/提示音音量。
 enum PcmOutputUsage { media, voiceCommunication }
 
+/// 原生 AudioTrack 的实际输出路由。
+///
+/// [isKnown] 为 false 表示播放器尚未启动或系统没有返回可识别的设备，
+/// 此时调用方不能把它当成耳机而打开 VAD 插话。
+class PcmOutputRoute {
+  const PcmOutputRoute({required this.isSpeaker, required this.isKnown});
+
+  const PcmOutputRoute.unknown() : isSpeaker = false, isKnown = false;
+
+  final bool isSpeaker;
+  final bool isKnown;
+}
+
 /// 流式 PCM 播放器：把服务端持续返回的音频块按顺序送入系统音频输出。
 abstract class PcmStreamPlayer {
   static const int defaultSampleRate = 24000;
@@ -25,6 +38,12 @@ abstract class PcmStreamPlayer {
 
   /// 调整当前播放器音量，只用于外放插话的临时 duck。
   Future<void> setVolume(double volume) async {}
+
+  /// 读取当前 AudioTrack 的真实输出路由。
+  ///
+  /// 设备连接列表不等于实际播放路由，外放插话必须以此为准。
+  Future<PcmOutputRoute> getOutputRoute() async =>
+      const PcmOutputRoute.unknown();
 
   Future<void> write(Uint8List pcm);
 
@@ -67,6 +86,21 @@ class PlatformPcmStreamPlayer extends PcmStreamPlayer {
     });
     if (_generation == generation) {
       _isStarted = true;
+    }
+  }
+
+  @override
+  Future<PcmOutputRoute> getOutputRoute() async {
+    if (!_isStarted) return const PcmOutputRoute.unknown();
+    try {
+      final result = await _channel.invokeMapMethod<String, Object?>(
+        'outputRoute',
+      );
+      final isKnown = result?['isKnown'] as bool? ?? false;
+      final isSpeaker = result?['isSpeaker'] as bool? ?? false;
+      return PcmOutputRoute(isSpeaker: isSpeaker, isKnown: isKnown);
+    } on Object {
+      return const PcmOutputRoute.unknown();
     }
   }
 

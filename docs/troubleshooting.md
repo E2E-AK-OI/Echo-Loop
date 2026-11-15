@@ -547,3 +547,54 @@
 - 未验证：不同品牌手机 AEC 的实际收敛速度、180ms 窗口是否足够、低音量 TTS 下残留比例是否仍按 0.7 分界；当前测试只覆盖合成 PCM 电平和控制器时序，仍待真机验收。
 - 相关代码：`lib/features/ai_speaking/services/voice_barge_in_guard.dart`、`lib/features/ai_speaking/services/voice_audio_session.dart`、`lib/features/ai_speaking/services/pcm_recorder.dart`、`android/app/src/main/kotlin/app/echoloop/VoiceAudioSessionHandler.kt`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/services/voice_barge_in_guard_test.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
 - 记录时间：2026-11-15。
+
+### 7.69 外放 TTS 仍被首词打断：连接设备列表不等于实际播放路由
+
+- 现象：1.03.9 修复 duck 误关闭后，用户复测高级档手机外放，TTS 仍通常只播第一个词就停，系统仍把它当插话；区别是回声过滤已生效，这个音不再变成用户消息。
+- 根因：1.03.8 的 `VoiceAudioSessionHandler.readOutputRoute()` 用 `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` 里是否存在「非内置扬声器/听筒」的设备来判断外接输出。这个列表是**已连接设备**，不是**当前实际路由**；部分设备会同时上报 `TYPE_TELEPHONY`、`TYPE_UNKNOWN`、`TYPE_REMOTE_SUBMIX` 等非耳机类型，手机明明在扬声器外放，却被判成耳机。控制器随后走耳机分支 `_enableBargeInListening()` 取消 VAD 静音，TTS 首词回声越过门限，直接 `_bargeIn`；此时 `EchoTextFilter` 只负责丢弃回声文本，无法阻止打断。
+- 解法：① `PcmStreamPlayer` 新增 `getOutputRoute()`，Android 端在 AudioTrack 写入第一块 PCM 后读取 `audioTrack.routedDevice.type`，只把 `TYPE_BUILTIN_SPEAKER` 判为外放，明确耳机/蓝牙/USB/助听设备判为非外放，其余类型或读取失败返回 `isKnown=false`；② 控制器在 `startWithUsage` 之后用真实路由复核音频会话状态，路由未知或实际外放时绝不启用 VAD；外放但通话路由/AEC 不可用时关闭语音插话并保持 VAD 静音；③ `VoiceAudioSessionHandler` 的外接判断只保留明确私密输出类型，不再把 `TYPE_TELEPHONY` 等连接项当耳机；④ 增加 TTS 输出路由日志，真机可核对 `AudioTrack route type` 与会话判定是否一致。
+- 规则：**外放/耳机判定必须看 AudioTrack 的实际路由，不能看「有没有连接过外设」；路由未知时按不安全处理，关闭语音插话而不是打开 VAD。** 音频会话状态与播放器路由不一致时，以播放器的真实路由为准。
+- 未验证：不同品牌手机的 `routedDevice` 上报差异、蓝牙已连接但实际走扬声器、USB/助听设备、通话路由切换瞬间的稳定性；当前只有单测与合成 PCM，仍待真机验收。
+- 相关代码：`android/app/src/main/kotlin/app/echoloop/PcmStreamPlayerHandler.kt`、`android/app/src/main/kotlin/app/echoloop/VoiceAudioSessionHandler.kt`、`lib/features/ai_speaking/services/pcm_stream_player.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
+- 记录时间：2026-11-15。
+
+### 7.70 外放插话始终无法确认：持续人声时 duck 不会降低用户自己的声音
+
+- 现象：1.03.10 修复外放首词误打断后，真机外放 TTS 可以正常播放，但朗读中用户对着手机说话无法打断；同版本耳机可以插话。
+- 根因：① 候选门限在控制器里取 `max(0.05, _bargeInThreshold × 1.6)`，中档灵敏度 0.045 被抬到 0.072，正常说话 RMS 常低于该值，守卫根本收不到候选；② duck 只降低 TTS 音量，用户持续说话时自己的声音不会下降，200ms 后的残留仍接近 duck 前参考峰值，旧逻辑把「残留 >= 参考 × 0.7」直接判为 AEC 失效并永久关闭插话，于是外放每次都 disable；耳机走 VAD，不经过这个判断，所以正常；③ 确认阈值叠加 duck 前峰值 × 0.5 与 0.1 下限，正常说话也很难达到。
+- 解法：守卫改为三段式 duck → listen → confirm/resume。① 播放 400ms 后持续 100ms 越过候选门限，先 duck TTS 到 12%；② 200ms 收敛后若残留 >= 参考 × 0.6，不再 disable，而是把 TTS 静音到 0，等待 180ms 播放管线尾音，再以 `max(0.04, 候选门限)` 复核：持续人声 250ms 确认插话，声音消失 450ms 恢复音量，最长 1.6s 强制恢复；③ 残留明显下降时按 `max(0.04, 候选门限 × 1.2, 残留 × 1.6)` 确认，450ms 静音恢复，恢复后 1.2s 冷却。控制器删除 `disable` 分支，新增 `listen` 动作（setVolume 0、VAD 保持静音），候选门限改为 `max(0.03, _bargeInThreshold)`。
+- 规则：**duck 后残留高不能直接判 AEC 失效；先静音 TTS 去掉回声再复核。用户持续说话时，自己的声音不会随 TTS 音量下降，残留高是正常现象。** 候选门限不能高于正常说话电平，也不能在灵敏度门限上重复乘系数。
+- 未验证：真机持续说话音量与 0.04 下限、不同品牌 AEC 尾音长度与 180ms 静音窗口、1.6s 强制恢复是否打断长句、duck/listen 手感与打断延迟、耳机/蓝牙路由；当前只有合成 PCM 与控制器单测。
+- 后续：7.71 修正了本条「残留高才静音复核」与「连续越线确认」的设计，改为 duck 后无条件静音复核 + 700ms 滑动窗口累计有声时长。
+- 相关代码：`lib/features/ai_speaking/services/voice_barge_in_guard.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/services/voice_barge_in_guard_test.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
+- 记录时间：2026-11-15。
+
+### 7.71 外放插话只 duck 不打断：不能用回声残留比例决定是否复核，也不能要求连续越线
+
+- 现象：1.03.11 真机外放朗读中用户插话，TTS 音量会先降低，随后恢复正常播放，始终不打断；日志只有 duck 与 resume，没有 listen/confirm。耳机仍可正常插话。
+- 根因：① 旧守卫在 duck 200ms 收敛后，只有残留 >= duck 前参考峰值 × 0.6 才进入静音复核；用户正常说话电平常低于 TTS 回声残留，于是被误判为「回声已下降」，直接走非复核阈值；② 非复核阈值叠加 `max(0.04, 候选门限 × 1.2, 残留 × 1.6)`，候选 0.045、残留 0.05 时门限约 0.08，正常说话达不到，450ms 后 resume；③ 复核分支要求连续 250ms 越过门限，真实语音的音节间隙会不断重置计时，即使进入复核也难确认。
+- 解法：① duck 收敛后**无条件**进入 listen，不再用残留比例决定是否复核；先 setVolume(0) 静音 TTS，等 `listenSettleDuration=180ms` 播放管线尾音；② 复核门限改为 `max(duckVoiceFloor=0.03, candidateThreshold × 0.75)`；③ 确认改为 700ms 滑动窗口，累计有声时长 `_voicedMsInWindow >= confirmHold=250ms` 且 voiced 帧 >= 3 即确认，允许音节间短暂跌破门限；④ 静音 >= `resumeHold=450ms` 或自 duck 起 >= `maxDuckDuration=1600ms` 恢复，恢复后 `resumeCooldown=1200ms`；⑤ 删除 `duckIneffectiveRatio`、`duckRiseRatio`、`_duckReference`、`_recentPeak`、`_voiceThreshold` 等连续阈值逻辑，新增 `debugSummary`（residual/threshold/voiced/quiet）供真机日志核对。
+- 规则：**duck 后是否复核不能由回声残留比例决定；用户持续说话时自己的声音不会随 TTS 下降，必须无条件静音复核。确认也不能要求连续越线，真实语音有音节间隙，应按固定窗口累计有声时长。** 复核门限要低于正常说话电平，并与候选门限保持固定比例，不要再乘 duck 前峰值。
+- 未验证：真机持续说话音量与 0.03 下限、700ms 窗口/250ms 累计是否适合不同语速、不同品牌 AEC 尾音长度与 180ms 静音窗口、1.6s 强制恢复是否截断长句、duck/listen 手感与打断延迟、耳机/蓝牙路由；当前只有合成 PCM、guard 单测与控制器单测。
+- 相关代码：`lib/features/ai_speaking/services/voice_barge_in_guard.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/services/voice_barge_in_guard_test.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
+- 记录时间：2026-11-15。
+### 7.72 外放插话能打断却只回答最后一个词：guard 期间 PCM 被丢弃，新 ASR 从 resume 之后才开始
+
+- 现象：1.03.12 真机外放 TTS 中插话能打断并恢复聆听，但插话没有被当作一次提问回答；偶尔只识别到最后几个词。
+- 根因：`_onSessionPcm` 在 `_isSpeakerBargeInGuardActive` 分支只把 PCM 交给 `VoiceBargeInGuard`，随后直接 return，TTS 期间用户说话的音频全部丢弃；确认后 `_bargeIn` 停止 TTS 并 `_resumeSessionListening`，后者重置预录并新建 ASR，只收到 resume 之后的音频。用户通常已经说完，服务端听不到开头，本地也没有 speechEnded，所以要么只得到尾部几个词，要么没有用户消息。
+- 解法：① 控制器维护 5s / 160000 字节滚动缓冲 `_bargeInAudioFrames`，guard 分支每帧先 `_recordBargeInFrame` 再判别；duck 时 `_beginBargeInSeedCapture` 从缓冲末尾带 2 帧起音开始收集，listen/confirm 持续累计；confirm 时 `_takeBargeInSeed` 取走 seed 并交给 `_bargeIn`。② `_bargeIn` 停播后把 seed 传给 `_resumeSessionListening(seedFrames:)`，存为 `_pendingAsrSeedFrames`；新 ASR 建连成功后在 `_flushPreroll` 之前 `_appendPendingAsrSeed`，保证 seed 排在 resume 后的实时帧之前；已有 ASR 则立即补发，非实时 ASR 则写入 `_batchAudio` 并打开本轮。③ 建连失败、会话清理、取消听音时清空 pending 与缓冲，避免泄漏到下一轮。
+- 规则：**插话打断不能只停 TTS；确认插话后必须把 guard 期间已经录到的用户音频交给新 ASR，且必须早于 resume 后的新帧。** 新 ASR 从确认时刻才开始，只能收到尾音；滚动缓冲的起点要从 duck 之前保留少量起音，避免首字被切。
+- 未验证：真机完整插话的转写与回答、5s 缓冲上限、服务端 800ms 尾静音是否会在 seed+静音后正常 final、连续快速插话、不同帧长的录音块；当前只有合成 PCM、guard 单测与控制器单测。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`、`lib/features/ai_speaking/services/voice_barge_in_guard.dart`。
+- 记录时间：2026-11-15。
+
+### 7.73 插话已打断但不产生用户回合：seed 之后没有本地 VAD 句末，batch ASR 永远不 final
+
+- 现象：1.03.13 真机外放 TTS 中插话已能打断，seed 也补发给新 ASR，但仍不产生用户消息/回答；realtime 可能只停在聆听，非实时模型必现。
+- 根因：① 插话确认时用户通常已经说完，guard 分支从未把 PCM 喂给本地 VAD，resume 只是 unmute；本地没有 speechStarted/speechEnded。② realtime 只能等服务端 `max_sentence_silence=800` 的 final；batch ASR 没有服务端 final，客户端也没有静音计时器，seed 写入 `_batchAudio` 后永远不会调用 `_finishSessionUtterance`。③ confirm 时立即 `_takeBargeInSeed` 并清空缓冲，停播的数百毫秒内用户继续说的话只进滚动缓冲，不再进 seed。
+- 解法：① confirm 只置 `_isBargeInSeedHandoffPending=true`，`_finishTtsPlayback` 在该标记为真时跳过清缓冲；`_bargeIn` 在 `await _stopTtsPlayback()` 之后才 `_takeBargeInSeed`，把停播期间继续捕获的尾部一起交给新 ASR。② `_resumeSessionListening` 检测到 seed 后置 `_isBargeInUtteranceActive=true`，记录 `_lastBargeInVoicedAtMs`，进入 listening 后启动 150ms `Timer.periodic`；每帧 RMS >= `max(0.015, _bargeInThreshold*0.5)` 时刷新最后有声时间；静音超过 `_sessionEndOfSpeechMs + 200ms` 且 `_isUtteranceOpen` 时主动 `_finishSessionUtterance`。③ 服务端 final、正常收尾、TTS 开始、清理、会话复位都会取消计时器，避免重复 finish；batch 与 realtime 共用同一条客户端收尾路径。
+- 规则：**插话 seed 交给新 ASR 后，不能只依赖服务端 final；必须有一条客户端尾静音兜底，并且只在本轮已打开时触发。** seed 的取走要放在播放器真正停下之后，停播期间的尾部音频不能丢。
+- 验证：2026-11-15 用户人工真机验证通过，外放 TTS 中插话已能产生回答，问题修复。
+- 未验证：1s 兜底与服务端 800ms final 的竞争、用户 resume 后继续说话时计时器刷新是否及时、batch 上传 seed+静音尾部的识别效果、连续快速插话；当前只有控制器单测与合成 PCM。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
+- 记录时间：2026-11-15。

@@ -1,6 +1,7 @@
 package app.echoloop
 
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Handler
@@ -97,6 +98,16 @@ class PcmStreamPlayerHandler(
                 result.success(null)
             }
 
+            "outputRoute" -> {
+                val route = readTrackOutputRoute()
+                result.success(
+                    mapOf(
+                        "isSpeaker" to route.isSpeaker,
+                        "isKnown" to route.isKnown,
+                    ),
+                )
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -142,6 +153,49 @@ class PcmStreamPlayerHandler(
         synchronized(lock) {
             if (audioTrack == null || finishThread != null) return
             queue.offer(bytes)
+        }
+    }
+
+    private data class TrackOutputRoute(
+        val isSpeaker: Boolean,
+        val isKnown: Boolean,
+    )
+
+    /**
+     * 读取 AudioTrack 真实路由，而不是「已连接设备列表」。
+     *
+     * 手机外放时列表里也可能残留 TYPE_TELEPHONY、TYPE_UNKNOWN 等非播放设备；
+     * 这里只把明确的扬声器/耳机类型视为已知路由，其余返回 unknown，由上层
+     * 关闭语音插话，避免把回声当成用户输入。
+     */
+    private fun readTrackOutputRoute(): TrackOutputRoute {
+        synchronized(lock) {
+            val track = audioTrack ?: return TrackOutputRoute(false, false)
+            return try {
+                val device = track.routedDevice
+                    ?: return TrackOutputRoute(false, false)
+                Log.i(TAG, "AudioTrack route type=${device.type}")
+                when (device.type) {
+                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> TrackOutputRoute(true, true)
+                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    AudioDeviceInfo.TYPE_USB_HEADSET,
+                    AudioDeviceInfo.TYPE_USB_DEVICE,
+                    AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                    AudioDeviceInfo.TYPE_HEARING_AID,
+                    AudioDeviceInfo.TYPE_BLE_HEADSET,
+                    AudioDeviceInfo.TYPE_BLE_SPEAKER,
+                    AudioDeviceInfo.TYPE_BLE_BROADCAST,
+                    -> TrackOutputRoute(false, true)
+                    else -> TrackOutputRoute(false, false)
+                }
+            } catch (error: IllegalStateException) {
+                Log.w(TAG, "read output route failed: ${error.message}")
+                TrackOutputRoute(false, false)
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-/// 外放插话动作：降低 TTS 音量、确认插话、恢复 TTS 音量、关闭插话。
-enum VoiceBargeInActionType { duck, confirm, resume, disable }
+/// 外放插话动作：降低 TTS 音量、静音 TTS 复核、确认插话、恢复 TTS 音量。
+enum VoiceBargeInActionType { duck, listen, confirm, resume }
 
 class VoiceBargeInAction {
   const VoiceBargeInAction(this.type, {this.volume});
@@ -12,12 +12,17 @@ class VoiceBargeInAction {
 
 /// 外放插话判别器。
 ///
-/// 平台 AEC 只能削弱回声，不能保证完全消除。这里用两段式策略：
-/// 1. TTS 播放中检测到持续人声，先把 TTS 音量 duck 到 12%，给 AEC 留出
-///    收敛时间；
-/// 2. duck 后先等 180ms 让平台 AEC 收敛，再以收敛后的残留电平为基线：
-///    持续高于基线的上升人声 250ms 才确认插话；若残留仍接近 duck 前峰值，
-///    说明 AEC 没有压住外放，直接关闭插话，避免把 TTS 回声当用户输入。
+/// 平台 AEC 只能削弱回声，不能保证完全消除。这里固定走三段式
+/// （duck → listen → confirm/resume）：
+/// 1. TTS 播放一段时间后检测到持续人声，先把 TTS 音量 duck 到 12%，给
+///    AEC 留出收敛时间；
+/// 2. duck 收敛后不再根据“残留是否接近 duck 前峰值”决定是否复核，而是
+///    一律把 TTS 静音一小段，彻底去掉回声后再判断。用户持续说话时，duck
+///    只降低 TTS，用户自己的声音不会下降；用残留比例判断会把正常音量的
+///    用户误判成回声。
+///
+/// 静音复核阶段按滑动窗口统计有声时长，而不是要求连续越过门限：真实语音
+/// 有音节间隙，连续 250ms 的条件很容易被短暂停顿清零。
 ///
 /// 该判别器只处理 PCM 电平，不依赖 [VadTurnDetector]；后者在播放期间被
 /// mute，避免能量门限被 TTS 自身触发。
@@ -25,37 +30,38 @@ class VoiceBargeInGuard {
   VoiceBargeInGuard({
     DateTime Function()? now,
     this.duckVolume = 0.12,
-    this.minPlaybackBeforeCandidate = const Duration(milliseconds: 300),
-    this.candidateHold = const Duration(milliseconds: 90),
+    this.listenVolume = 0,
+    this.minPlaybackBeforeCandidate = const Duration(milliseconds: 400),
+    this.candidateHold = const Duration(milliseconds: 100),
     this.candidateTimeout = const Duration(milliseconds: 900),
     this.confirmHold = const Duration(milliseconds: 250),
-    this.resumeHold = const Duration(milliseconds: 500),
-    this.maxDuckDuration = const Duration(milliseconds: 1500),
-    this.echoRatio = 0.38,
-    this.duckVoiceFloor = 0.055,
-    this.duckAmbientFloor = 0.02,
-    this.duckSettleDuration = const Duration(milliseconds: 180),
-    this.duckIneffectiveRatio = 0.7,
-    this.duckRiseRatio = 1.5,
+    this.confirmWindow = const Duration(milliseconds: 700),
+    this.resumeHold = const Duration(milliseconds: 450),
+    this.maxDuckDuration = const Duration(milliseconds: 1600),
+    this.resumeCooldown = const Duration(milliseconds: 1200),
+    this.duckVoiceFloor = 0.03,
+    this.duckSettleDuration = const Duration(milliseconds: 200),
+    this.listenSettleDuration = const Duration(milliseconds: 180),
   }) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
   final double duckVolume;
+  final double listenVolume;
   final Duration minPlaybackBeforeCandidate;
   final Duration candidateHold;
   final Duration candidateTimeout;
   final Duration confirmHold;
+  final Duration confirmWindow;
   final Duration resumeHold;
   final Duration maxDuckDuration;
-  final double echoRatio;
+  final Duration resumeCooldown;
   final double duckVoiceFloor;
-  final double duckAmbientFloor;
   final Duration duckSettleDuration;
-  final double duckIneffectiveRatio;
-  final double duckRiseRatio;
+  final Duration listenSettleDuration;
 
   bool _active = false;
   bool _isDucking = false;
+  bool _isListening = false;
   bool _confirmed = false;
   bool _hasCandidate = false;
   DateTime? _startedAt;
@@ -63,20 +69,32 @@ class VoiceBargeInGuard {
   DateTime? _candidateVoiceSince;
   DateTime? _candidateQuietSince;
   DateTime? _duckAt;
-  DateTime? _duckVoiceSince;
-  DateTime? _duckQuietSince;
-  double _candidateThreshold = 0.05;
-  double _duckVoiceThreshold = 0.055;
-  double _duckAmbientThreshold = 0.02;
-  double _recentPeak = 0;
-  double _duckReference = 0;
+  DateTime? _listenAt;
+  DateTime? _cooldownUntil;
+  DateTime? _lastFrameAt;
+  DateTime? _lastVoicedAt;
+  double _candidateThreshold = 0.04;
+  double _duckVoiceThreshold = 0.03;
   double _duckResidualPeak = 0;
   bool _duckSettled = false;
+  bool _listenSettled = false;
+  final List<_VoiceSample> _voiceSamples = <_VoiceSample>[];
+  double _voicedMsInWindow = 0;
 
   bool get isDucking => _isDucking;
+  bool get isListening => _isListening;
   bool get isConfirmed => _confirmed;
 
-  void onPlaybackStarted({double candidateThreshold = 0.05}) {
+  /// 供日志定位真机问题：残留峰值、当前门限、窗口内有声时长与静音时长。
+  String get debugSummary {
+    final quietMs = _quietMs(_now());
+    return 'residual=${_duckResidualPeak.toStringAsFixed(3)}, '
+        'threshold=${_duckVoiceThreshold.toStringAsFixed(3)}, '
+        'voiced=${_voicedMsInWindow.toStringAsFixed(0)}ms, '
+        'quiet=${quietMs.toStringAsFixed(0)}ms';
+  }
+
+  void onPlaybackStarted({double candidateThreshold = 0.04}) {
     reset();
     _active = true;
     _candidateThreshold = candidateThreshold;
@@ -88,7 +106,9 @@ class VoiceBargeInGuard {
       return const <VoiceBargeInAction>[];
     }
     final now = _now();
-    _recentPeak = math.max(level, _recentPeak * 0.97);
+    if (_cooldownUntil != null && now.isBefore(_cooldownUntil!)) {
+      return const <VoiceBargeInAction>[];
+    }
 
     if (!_isDucking) {
       return _handleCandidate(level, now);
@@ -129,63 +149,115 @@ class VoiceBargeInGuard {
   }
 
   List<VoiceBargeInAction> _handleDucking(double level, DateTime now) {
+    if (_isListening) {
+      return _handleListening(level, now);
+    }
     if (!_duckSettled) {
       _duckResidualPeak = math.max(_duckResidualPeak, level);
       if (now.difference(_duckAt!) < duckSettleDuration) {
         return const <VoiceBargeInAction>[];
       }
       _duckSettled = true;
-      // duck 后残留没有明显下降，说明 AEC 没把外放声音消掉；继续按
-      // 能量确认只会把 TTS 回声当用户，必须关闭插话而不是误打断。
-      if (_duckResidualPeak >= _duckReference * duckIneffectiveRatio) {
-        return _disable();
-      }
+      _isListening = true;
+      _listenAt = now;
+      _listenSettled = false;
       _duckVoiceThreshold = math.max(
         duckVoiceFloor,
-        math.max(_duckResidualPeak * duckRiseRatio, _duckReference * echoRatio),
+        _candidateThreshold * 0.75,
       );
-      _duckAmbientThreshold = math.max(
-        duckAmbientFloor,
-        _duckReference * echoRatio * 0.45,
-      );
-      _duckVoiceSince = null;
-      _duckQuietSince = null;
-    }
-    if (level >= _duckVoiceThreshold) {
-      _duckQuietSince = null;
-      _duckVoiceSince ??= now;
-      if (now.difference(_duckVoiceSince!) >= confirmHold) {
-        return _confirm();
-      }
-    } else if (level <= _duckAmbientThreshold) {
-      _duckVoiceSince = null;
-      _duckQuietSince ??= now;
-      if (now.difference(_duckQuietSince!) >= resumeHold) {
-        return _resume();
-      }
-    } else {
-      _duckVoiceSince = null;
-      _duckQuietSince = null;
-    }
-    if (now.difference(_duckAt!) >= maxDuckDuration) {
-      return _resume();
+      _resetVoiceWindow(now);
+      return [
+        VoiceBargeInAction(VoiceBargeInActionType.listen, volume: listenVolume),
+      ];
     }
     return const <VoiceBargeInAction>[];
+  }
+
+  /// TTS 已静音后的复核：等播放管线把尾音放完，再按滑动窗口判断人声。
+  List<VoiceBargeInAction> _handleListening(double level, DateTime now) {
+    if (!_listenSettled) {
+      _lastFrameAt = now;
+      if (now.difference(_listenAt!) < listenSettleDuration) {
+        return const <VoiceBargeInAction>[];
+      }
+      _listenSettled = true;
+      _lastFrameAt = now;
+      _lastVoicedAt = now;
+      _duckVoiceThreshold = math.max(
+        duckVoiceFloor,
+        _candidateThreshold * 0.75,
+      );
+      _resetVoiceWindow(now);
+      // 收敛帧本身不参与判断，避免播放管线最后一小段尾音被当成人声。
+      return const <VoiceBargeInAction>[];
+    }
+
+    final deltaMs = _frameDeltaMs(now);
+    final voiced = level >= _duckVoiceThreshold;
+    if (voiced) {
+      _lastVoicedAt = now;
+    }
+    _addVoiceSample(now, deltaMs, voiced);
+
+    final voicedFrames = _voiceSamples.where((sample) => sample.voiced).length;
+    if (_voicedMsInWindow >= confirmHold.inMilliseconds && voicedFrames >= 3) {
+      return _confirm();
+    }
+    if (_quietMs(now) >= resumeHold.inMilliseconds) {
+      return _resume(now);
+    }
+    if (now.difference(_duckAt!) >= maxDuckDuration) {
+      return _resume(now);
+    }
+    return const <VoiceBargeInAction>[];
+  }
+
+  double _frameDeltaMs(DateTime now) {
+    final last = _lastFrameAt;
+    _lastFrameAt = now;
+    if (last == null) return 0;
+    return now.difference(last).inMilliseconds.clamp(0, 200).toDouble();
+  }
+
+  void _addVoiceSample(DateTime now, double durationMs, bool voiced) {
+    if (durationMs <= 0) return;
+    _voiceSamples.add(_VoiceSample(now, durationMs, voiced));
+    if (voiced) {
+      _voicedMsInWindow += durationMs;
+    }
+    final cutoff = now.subtract(confirmWindow);
+    while (_voiceSamples.isNotEmpty &&
+        _voiceSamples.first.at.isBefore(cutoff)) {
+      final removed = _voiceSamples.removeAt(0);
+      if (removed.voiced) {
+        _voicedMsInWindow -= removed.durationMs;
+      }
+    }
+  }
+
+  double _quietMs(DateTime now) {
+    final since = _lastVoicedAt ?? _listenAt;
+    if (since == null) return 0;
+    return math.max(0, now.difference(since).inMilliseconds.toDouble());
+  }
+
+  void _resetVoiceWindow(DateTime? referenceAt) {
+    _voiceSamples.clear();
+    _voicedMsInWindow = 0;
+    _lastFrameAt = referenceAt;
+    _lastVoicedAt = referenceAt;
   }
 
   List<VoiceBargeInAction> _startDuck(DateTime now) {
     _isDucking = true;
     _duckSettled = false;
+    _isListening = false;
+    _listenAt = null;
+    _listenSettled = false;
     _duckAt = now;
-    _duckVoiceSince = null;
-    _duckQuietSince = null;
     _duckResidualPeak = 0;
-    _duckReference = math.max(_recentPeak, _candidateThreshold);
-    _duckVoiceThreshold = math.max(duckVoiceFloor, _duckReference * echoRatio);
-    _duckAmbientThreshold = math.max(
-      duckAmbientFloor,
-      _duckReference * echoRatio * 0.45,
-    );
+    _duckVoiceThreshold = math.max(duckVoiceFloor, _candidateThreshold * 0.75);
+    _resetVoiceWindow(now);
     return [
       VoiceBargeInAction(VoiceBargeInActionType.duck, volume: duckVolume),
     ];
@@ -194,38 +266,36 @@ class VoiceBargeInGuard {
   List<VoiceBargeInAction> _confirm() {
     _confirmed = true;
     _isDucking = false;
+    _isListening = false;
     _duckSettled = false;
+    _listenSettled = false;
+    _resetVoiceWindow(null);
     return const [VoiceBargeInAction(VoiceBargeInActionType.confirm)];
   }
 
-  List<VoiceBargeInAction> _resume() {
+  List<VoiceBargeInAction> _resume(DateTime now) {
     _isDucking = false;
+    _isListening = false;
     _duckSettled = false;
-    _duckVoiceSince = null;
-    _duckQuietSince = null;
+    _listenSettled = false;
+    _duckAt = null;
+    _listenAt = null;
     _hasCandidate = false;
-    _recentPeak = 0;
-    _duckReference = 0;
     _duckResidualPeak = 0;
+    _resetVoiceWindow(null);
+    _cooldownUntil = now.add(resumeCooldown);
     return const [VoiceBargeInAction(VoiceBargeInActionType.resume)];
   }
 
-  List<VoiceBargeInAction> _disable() {
-    _active = false;
-    _confirmed = false;
-    _isDucking = false;
-    _duckSettled = false;
-    _duckReference = 0;
-    _duckResidualPeak = 0;
-    _clearCandidate();
-    return const [VoiceBargeInAction(VoiceBargeInActionType.disable)];
-  }
-
-  /// TTS 播放停止时恢复可能处于 duck 状态的音量。
+  /// TTS 播放停止时恢复可能处于 duck/静音状态的音量。
   List<VoiceBargeInAction> onPlaybackStopped() {
-    final wasDucking = _isDucking;
+    final wasDucking = _isDucking || _isListening;
     _active = false;
     _isDucking = false;
+    _isListening = false;
+    _duckSettled = false;
+    _listenSettled = false;
+    _resetVoiceWindow(null);
     _clearCandidate();
     if (!wasDucking) return const <VoiceBargeInAction>[];
     return const [VoiceBargeInAction(VoiceBargeInActionType.resume)];
@@ -234,13 +304,16 @@ class VoiceBargeInGuard {
   void reset() {
     _active = false;
     _isDucking = false;
+    _isListening = false;
     _confirmed = false;
     _startedAt = null;
     _duckAt = null;
-    _recentPeak = 0;
-    _duckReference = 0;
+    _listenAt = null;
     _duckResidualPeak = 0;
     _duckSettled = false;
+    _listenSettled = false;
+    _cooldownUntil = null;
+    _resetVoiceWindow(null);
     _clearCandidate();
   }
 
@@ -250,4 +323,12 @@ class VoiceBargeInGuard {
     _candidateVoiceSince = null;
     _candidateQuietSince = null;
   }
+}
+
+class _VoiceSample {
+  const _VoiceSample(this.at, this.durationMs, this.voiced);
+
+  final DateTime at;
+  final double durationMs;
+  final bool voiced;
 }

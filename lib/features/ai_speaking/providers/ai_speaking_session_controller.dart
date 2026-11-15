@@ -209,6 +209,25 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   /// TTS 音量是否已被 guard 降低；停止播放时必须恢复。
   bool _isSpeakerBargeInDucked = false;
 
+  /// 外放插话期间保留的最近 5s 麦克风音频，确认插话后补发给新一轮 ASR。
+  final List<Uint8List> _bargeInAudioFrames = [];
+  int _bargeInAudioBytes = 0;
+
+  /// 从 guard 判定 duck 开始记录的插话音频，含 duck 前两帧作为起音。
+  final List<Uint8List> _bargeInSeedFrames = [];
+  bool _isBargeInSeedCapturing = false;
+
+  /// 等待 ASR 建连后补发的插话音频；必须早于预录音频进入新会话。
+  List<Uint8List> _pendingAsrSeedFrames = const [];
+
+  /// confirm 后到播放器真正停下之间仍属于插话，继续收集尾部音频。
+  bool _isBargeInSeedHandoffPending = false;
+
+  /// 插话音频交给新 ASR 后，用客户端尾静音兜底结束本轮。
+  bool _isBargeInUtteranceActive = false;
+  int _lastBargeInVoicedAtMs = 0;
+  Timer? _bargeInEndOfSpeechTimer;
+
   /// 当前正在朗读的 AI 消息；用户打断时给它打上「已打断」标记。
   String? _activeAssistantId;
 
@@ -626,8 +645,16 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         _allowsBargeIn &&
         state.phase == AiSpeakingPhase.speaking) {
       // 外放时 VAD 保持静音，直接用 PCM 电平做 duck/确认判别。
+      // 这段音频不能丢：确认插话后要作为新一轮 ASR 的开头补发。
+      _recordBargeInFrame(bytes);
       _handleSpeakerBargeInFrame(turnId, rms);
       return;
+    }
+    if (_isBargeInUtteranceActive &&
+        state.phase == AiSpeakingPhase.listening &&
+        rms >= math.max(0.015, _bargeInThreshold * 0.5)) {
+      // 插话确认后用户可能还在继续说话；客户端兜底计时器据此重新等待静音。
+      _lastBargeInVoicedAtMs = now;
     }
     if (state.phase == AiSpeakingPhase.preparing &&
         !_isResumingListening &&
@@ -709,19 +736,40 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   /// 不做语义判停，只按本地能量 VAD 判定用户开口；被打断的回复已经完整生成，
   /// 保留在消息列表里，仅中断音频播放。
   Future<void> _bargeIn(int turnId) async {
-    if (!_isActive(turnId) || !_isSessionActive || !_allowsBargeIn) return;
-    if (state.phase != AiSpeakingPhase.speaking) return;
+    if (!_isActive(turnId) ||
+        !_isSessionActive ||
+        !_allowsBargeIn ||
+        state.phase != AiSpeakingPhase.speaking) {
+      // 确认与停播之间会话可能已经结束；丢弃尚未交接的插话音频。
+      _isBargeInSeedHandoffPending = false;
+      _clearBargeInBuffers();
+      return;
+    }
     _markActiveAssistantInterrupted();
     _ttsCancelToken?.cancel();
     _ttsCancelToken = null;
     // 首句朗读可能早于大模型生成结束，插话时必须一起取消后续生成。
     _chatCancelToken?.cancel();
     // 等播放器真正停下再恢复识别，否则插话后的第一帧可能还是外放尾音。
+    // 这段时间用户可能仍在说话，seed 要等停播后再取，才能带上尾部。
     await _stopTtsPlayback();
     _settleStreamingMessages();
-    if (!_isActive(turnId) || !_isSessionActive || !_allowsBargeIn) return;
+    if (!_isActive(turnId) || !_isSessionActive || !_allowsBargeIn) {
+      _isBargeInSeedHandoffPending = false;
+      _clearBargeInBuffers();
+      return;
+    }
+    final pendingSeedFrames = _takeBargeInSeed();
+    final seedBytes = pendingSeedFrames.fold<int>(
+      0,
+      (sum, frame) => sum + frame.length,
+    );
+    AppLogger.log(
+      'AiSpeakingBargeIn',
+      '把插话音频补发给新一轮识别：${pendingSeedFrames.length} 帧，$seedBytes 字节',
+    );
     // 插话时用户已经在说话，不再额外等待尾音静默，避免丢掉开头。
-    await _resumeSessionListening();
+    await _resumeSessionListening(seedFrames: pendingSeedFrames);
   }
 
   /// 启动原生音频会话，记录当前输出路由与 AEC 能力。
@@ -790,6 +838,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     for (final action in actions) {
       switch (action.type) {
         case VoiceBargeInActionType.duck:
+          _beginBargeInSeedCapture();
           _isSpeakerBargeInDucked = true;
           unawaited(
             ref
@@ -797,18 +846,26 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
                 .setVolume(action.volume ?? _bargeInGuard.duckVolume),
           );
           AppLogger.log('AiSpeakingBargeIn', '检测到持续人声，先降低 TTS 音量');
+        case VoiceBargeInActionType.listen:
+          _isSpeakerBargeInDucked = true;
+          unawaited(
+            ref
+                .read(pcmStreamPlayerProvider)
+                .setVolume(action.volume ?? _bargeInGuard.listenVolume),
+          );
+          AppLogger.log(
+            'AiSpeakingBargeIn',
+            'duck 后仍有人声，暂停 TTS 输出确认是否为插话：${_bargeInGuard.debugSummary}',
+          );
         case VoiceBargeInActionType.confirm:
-          AppLogger.log('AiSpeakingBargeIn', 'duck 后仍有人声，确认用户插话');
+          // 停播可能还要几百毫秒；先继续收集，_bargeIn 停播后再取 seed。
+          _isBargeInSeedHandoffPending = true;
+          AppLogger.log('AiSpeakingBargeIn', '静音复核后仍有人声，确认用户插话');
           unawaited(_bargeIn(turnId));
         case VoiceBargeInActionType.resume:
+          _clearBargeInBuffers();
           _restoreTtsVolume();
-          AppLogger.log('AiSpeakingBargeIn', '人声衰减，判定为回声，恢复 TTS 音量');
-        case VoiceBargeInActionType.disable:
-          _restoreTtsVolume();
-          _isSpeakerBargeInGuardActive = false;
-          _vad?.mute();
-          state = state.copyWith(isVoiceBargeInAvailable: false);
-          AppLogger.log('AiSpeakingBargeIn', 'duck 后回声未下降，关闭外放语音插话，仅保留手动停止');
+          AppLogger.log('AiSpeakingBargeIn', '插话未确认，恢复 TTS 音量');
       }
     }
   }
@@ -820,11 +877,106 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     unawaited(ref.read(pcmStreamPlayerProvider).setVolume(1));
   }
 
+  /// 外放插话期间最多保留 5s 音频；确认插话最多约 2s，足够覆盖起音。
+  static const int _bargeInAudioMaxBytes = 160000;
+
+  /// 插话后等待服务端 final 的额外宽限，避免与服务端 800ms 断句同时触发。
+  static const int _bargeInEndOfSpeechGraceMs = 200;
+
+  void _recordBargeInFrame(Uint8List bytes) {
+    _bargeInAudioFrames.add(bytes);
+    _bargeInAudioBytes += bytes.length;
+    while (_bargeInAudioBytes > _bargeInAudioMaxBytes &&
+        _bargeInAudioFrames.length > 1) {
+      _bargeInAudioBytes -= _bargeInAudioFrames.removeAt(0).length;
+    }
+    if (_isBargeInSeedCapturing) {
+      _bargeInSeedFrames.add(bytes);
+    }
+  }
+
+  /// 从 duck 开始收集插话音频；额外带两帧起音，避免首字被切掉。
+  void _beginBargeInSeedCapture() {
+    if (_isBargeInSeedCapturing) return;
+    _isBargeInSeedCapturing = true;
+    final start = math.max(0, _bargeInAudioFrames.length - 2);
+    _bargeInSeedFrames
+      ..clear()
+      ..addAll(_bargeInAudioFrames.sublist(start));
+  }
+
+  List<Uint8List> _takeBargeInSeed() {
+    if (_bargeInSeedFrames.isEmpty && _bargeInAudioFrames.isNotEmpty) {
+      final start = math.max(0, _bargeInAudioFrames.length - 2);
+      _bargeInSeedFrames.addAll(_bargeInAudioFrames.sublist(start));
+    }
+    final seed = List<Uint8List>.unmodifiable(_bargeInSeedFrames);
+    _clearBargeInBuffers();
+    return seed;
+  }
+
+  void _clearBargeInBuffers() {
+    _bargeInAudioFrames.clear();
+    _bargeInAudioBytes = 0;
+    _bargeInSeedFrames.clear();
+    _isBargeInSeedCapturing = false;
+    _isBargeInSeedHandoffPending = false;
+  }
+
+  /// 把等待中的插话音频按序补发给 ASR；必须早于预录音频。
+  void _appendPendingAsrSeed(RealtimeAsrSession session) {
+    if (_pendingAsrSeedFrames.isEmpty) return;
+    for (final frame in _pendingAsrSeedFrames) {
+      session.appendPcm(frame);
+    }
+    _pendingAsrSeedFrames = const [];
+  }
+
+  /// 插话音频交给新 ASR 后启动尾静音兜底。
+  ///
+  /// 用户通常在 TTS 停播前就说完，本地 VAD 没看到 speechStarted，服务端
+  /// 也不一定会回 final；没有这个兜底，batch 模型会永远停在聆听。
+  void _startBargeInEndOfSpeechWatch(int turnId) {
+    _bargeInEndOfSpeechTimer?.cancel();
+    _bargeInEndOfSpeechTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) => _checkBargeInEndOfSpeech(turnId),
+    );
+  }
+
+  void _checkBargeInEndOfSpeech(int turnId) {
+    if (!_isBargeInUtteranceActive ||
+        !_isUtteranceOpen ||
+        !_isActive(turnId) ||
+        !_isSessionActive ||
+        state.phase != AiSpeakingPhase.listening) {
+      return;
+    }
+    final silenceMs =
+        DateTime.now().millisecondsSinceEpoch - _lastBargeInVoicedAtMs;
+    if (silenceMs < _sessionEndOfSpeechMs + _bargeInEndOfSpeechGraceMs) {
+      return;
+    }
+    _cancelBargeInEndOfSpeechTimer();
+    AppLogger.log('AiSpeakingBargeIn', '插话后等待句末超时，主动结束本轮识别');
+    unawaited(_finishSessionUtterance(turnId));
+  }
+
+  void _cancelBargeInEndOfSpeechTimer() {
+    _bargeInEndOfSpeechTimer?.cancel();
+    _bargeInEndOfSpeechTimer = null;
+    _isBargeInUtteranceActive = false;
+  }
+
   /// TTS 播放结束/被打断后的统一收尾：恢复音量、复位 guard 与外放会话。
   Future<void> _finishTtsPlayback() async {
     _bargeInGuard.onPlaybackStopped();
     _restoreTtsVolume();
     _isSpeakerBargeInGuardActive = false;
+    // 插话确认后的停播阶段仍要继续收集 seed；由 _bargeIn 取走后再清理。
+    if (!_isBargeInSeedHandoffPending) {
+      _clearBargeInBuffers();
+    }
     _activeAssistantId = null;
     if (!_isSessionActive) {
       await _endVoiceAudioSession();
@@ -890,8 +1042,17 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     }
     if (_usesBatchSessionAsr) {
       // 非实时模型没有长连接可建，只需要准备本轮的音频缓冲。
-      _batchAudio ??= BytesBuilder(copy: false);
-      _isUtteranceOpen = false;
+      if (_pendingAsrSeedFrames.isNotEmpty) {
+        _batchAudio = BytesBuilder(copy: false);
+        for (final frame in _pendingAsrSeedFrames) {
+          _batchAudio!.add(frame);
+        }
+        _pendingAsrSeedFrames = const [];
+        _isUtteranceOpen = true;
+      } else {
+        _batchAudio ??= BytesBuilder(copy: false);
+        _isUtteranceOpen = false;
+      }
       return Future<void>.value();
     }
     final inFlight = _asrStartFuture;
@@ -953,10 +1114,12 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
           _setError(AiSpeakingErrorKind.asrFailed, '语音识别失败：$error');
         },
       );
+      _appendPendingAsrSeed(session);
       _flushPreroll(session);
     } on Object catch (error) {
       _isUtteranceOpen = false;
       _resetPreroll();
+      _pendingAsrSeedFrames = const [];
       if (_isActive(turnId)) {
         _setError(AiSpeakingErrorKind.asrFailed, '启动语音识别失败：$error');
       }
@@ -1039,6 +1202,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         state.phase != AiSpeakingPhase.listening) {
       return;
     }
+    _cancelBargeInEndOfSpeechTimer();
     _vad?.mute();
     state = state.copyWith(phase: AiSpeakingPhase.finalizing, inputLevel: 0);
     if (_usesBatchSessionAsr) {
@@ -1138,6 +1302,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   /// 用户输入，形成「AI 把自己说的话当成用户发言」的反馈环。
   Future<void> _resumeSessionListening({
     bool waitForSpeakerTail = false,
+    List<Uint8List> seedFrames = const [],
   }) async {
     if (!_isSessionActive || _isDisposed) return;
     if (_isS2sSession) {
@@ -1151,6 +1316,17 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
       return;
     }
     if (_isTtsActive) return;
+    final usesLocalAsr = _levelConfigFor(ref.read(aiSpeakingLevelProvider))
+        .engine
+        .usesLocalAsr;
+    final hasBargeInSeed = seedFrames.isNotEmpty && !usesLocalAsr;
+    if (hasBargeInSeed) {
+      _isBargeInUtteranceActive = true;
+      _lastBargeInVoicedAtMs = DateTime.now().millisecondsSinceEpoch;
+    } else {
+      _cancelBargeInEndOfSpeechTimer();
+    }
+    _pendingAsrSeedFrames = List<Uint8List>.unmodifiable(seedFrames);
     final turnId = _turnId;
     final resumeId = ++_resumeListeningId;
     _isResumingListening = true;
@@ -1173,14 +1349,15 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         !_isSessionActive ||
         _isDisposed ||
         _isTtsActive) {
-      if (isCurrentResume) _isResumingListening = false;
+      if (isCurrentResume) {
+        _isResumingListening = false;
+        _pendingAsrSeedFrames = const [];
+        _cancelBargeInEndOfSpeechTimer();
+      }
       return;
     }
     _isResumingListening = false;
     _resetPreroll();
-    final usesLocalAsr = _levelConfigFor(ref.read(aiSpeakingLevelProvider))
-        .engine
-        .usesLocalAsr;
     state = state.copyWith(
       phase: AiSpeakingPhase.listening,
       partialTranscript: '',
@@ -1189,10 +1366,18 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     );
     _vad?.unmute(timestampMs: DateTime.now().millisecondsSinceEpoch);
     if (usesLocalAsr) {
-      // 本地识别每轮单独录音，恢复听音即开始下一轮录音。
+      // 本地识别每轮单独录音，无法回灌 PCM；高级档不会走这条路径。
+      _pendingAsrSeedFrames = const [];
       unawaited(_startLocalListening(turnId));
     } else {
+      final existingAsr = _asrSession;
+      if (existingAsr != null) {
+        _appendPendingAsrSeed(existingAsr);
+      }
       unawaited(_ensureCloudAsr(turnId));
+    }
+    if (hasBargeInSeed) {
+      _startBargeInEndOfSpeechWatch(turnId);
     }
   }
 
@@ -1211,6 +1396,10 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     _echoTextFilter.clear();
     _isSpeakerBargeInGuardActive = false;
     _isSpeakerBargeInDucked = false;
+    _cancelBargeInEndOfSpeechTimer();
+    _lastBargeInVoicedAtMs = 0;
+    _clearBargeInBuffers();
+    _pendingAsrSeedFrames = const [];
     _activeAssistantId = null;
     unawaited(_endVoiceAudioSession());
     _isUtteranceOpen = false;
@@ -2165,6 +2354,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   /// TTS 开始前断开 ASR。朗读期间麦克风仍用于高级档插话判断，但任何音频
   /// 都不再送进识别，避免扬声器回声被当成用户发言。
   Future<void> _suspendSessionAsrForTts() async {
+    _cancelBargeInEndOfSpeechTimer();
     _resetPreroll();
     _isUtteranceOpen = false;
     _batchAudio = null;
@@ -2257,6 +2447,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     Stream<String> sentences,
   ) async {
     _bargeInGuard.reset();
+    _isSpeakerBargeInGuardActive = false;
     final status = await _prepareTtsOutput();
     if (!_isActive(turnId)) return false;
     final canVoiceBargeIn =
@@ -2378,6 +2569,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
     var shouldDrain = false;
     var drained = false;
     _bargeInGuard.reset();
+    _isSpeakerBargeInGuardActive = false;
     _isTtsActive = true;
     try {
       // 先保持 VAD 静音，等确认实际输出路由后再决定是否允许语音插话。
@@ -2387,13 +2579,26 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         sampleRate: AliyunTtsStreamClient.sampleRate,
         usage: status.outputUsage,
       );
-      _configureVoiceBargeInForTts(status, turnId);
+      // 设备连接列表不等于实际播放路由。等第一块 PCM 写入后再读
+      // AudioTrack 路由，避免部分机型在首帧前仍回报默认设备。
+      var routeConfigured = false;
       await for (final chunk in openAudio()) {
         if (!_isActive(turnId) || (_ttsCancelToken?.isCancelled ?? false)) {
           break;
         }
         receivedAudio = true;
         await player.write(chunk);
+        if (!routeConfigured) {
+          routeConfigured = true;
+          final route = await player.getOutputRoute();
+          AppLogger.log(
+            'AiSpeakingTts',
+            'TTS 输出路由：speaker=${route.isSpeaker}，known=${route.isKnown}，'
+                '会话判定外放=${status.isSpeakerOutput}，AEC=${status.isAecAvailable}，'
+                'usage=${status.outputUsage.name}',
+          );
+          _configureVoiceBargeInForTts(status, turnId, route);
+        }
       }
       // 只有合成自然结束且未被取消时才等待排空；插话、停止或错误走后文的
       // stop，立即丢弃缓冲区，避免继续朗读。
@@ -2441,11 +2646,13 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
 
   /// 根据 TTS 的实际播放路由决定高级档是否允许语音插话。
   ///
-  /// 外放且平台 AEC 可用时走 duck 判别：先压低音量，确认不是回声后再打断；
-  /// AEC 不可用时只保留手动停止，避免把 AI 自己的声音当成用户插话。
+  /// [route] 来自已启动的 AudioTrack，比设备连接列表更能代表真实输出。
+  /// 外放且通话路由/AEC 可用时走 duck 判别；路由未知或外放但 AEC 不可用时
+  /// 只保留手动停止，绝不退回 VAD，避免把 AI 自己的声音当成用户插话。
   void _configureVoiceBargeInForTts(
     VoiceAudioSessionStatus status,
     int turnId,
+    PcmOutputRoute route,
   ) {
     if (!_allowsBargeIn) return;
     if (!_isActive(turnId) ||
@@ -2453,28 +2660,38 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
         state.phase != AiSpeakingPhase.speaking) {
       return;
     }
-    if (!status.isRouteKnown) {
+    if (!route.isKnown) {
+      _isSpeakerBargeInGuardActive = false;
       state = state.copyWith(isVoiceBargeInAvailable: false);
       _vad?.mute();
-      AppLogger.log('AiSpeakingTts', '无法确认输出路由，关闭语音插话');
+      AppLogger.log('AiSpeakingTts', '无法确认 AudioTrack 实际输出路由，关闭语音插话');
       return;
     }
-    if (!status.isSpeakerOutput) {
+    if (!route.isSpeaker) {
+      _isSpeakerBargeInGuardActive = false;
       state = state.copyWith(isVoiceBargeInAvailable: true);
       _enableBargeInListening();
+      AppLogger.log('AiSpeakingTts', '耳机/外接输出，启用 VAD 语音插话');
       return;
     }
-    if (!status.canUseSpeakerBargeIn) {
+    if (!status.isSupported ||
+        status.outputUsage != PcmOutputUsage.voiceCommunication ||
+        !status.isAecAvailable) {
+      _isSpeakerBargeInGuardActive = false;
       state = state.copyWith(isVoiceBargeInAvailable: false);
-      AppLogger.log('AiSpeakingTts', '外放但平台回声消除不可用，关闭语音插话');
+      _vad?.mute();
+      AppLogger.log('AiSpeakingTts', '外放但通话路由或平台回声消除不可用，关闭语音插话');
       return;
     }
     state = state.copyWith(isVoiceBargeInAvailable: true);
     _isSpeakerBargeInGuardActive = true;
+    _clearBargeInBuffers();
+    // 候选门限不能高于正常说话电平。中档 _bargeInThreshold 约 0.045，
+    // 再乘系数会把用户正常音量挡在门外。
     _bargeInGuard.onPlaybackStarted(
-      candidateThreshold: math.max(0.05, _bargeInThreshold * 1.6),
+      candidateThreshold: math.max(0.03, _bargeInThreshold),
     );
-    AppLogger.log('AiSpeakingBargeIn', '外放 AEC 可用，启用 duck 插话判别');
+    AppLogger.log('AiSpeakingBargeIn', '外放 AEC 可用，启用 duck/listen 插话判别');
   }
 
   /// 单段全文合成入口：保留非分句路径与非 Android 的原有行为。
@@ -2813,6 +3030,7 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   ) async {
     _rememberTtsText(text);
     _bargeInGuard.reset();
+    _isSpeakerBargeInGuardActive = false;
     final status = await _prepareTtsOutput();
     if (!_isActive(turnId)) return;
     final canVoiceBargeIn =
@@ -2885,6 +3103,10 @@ class AiSpeakingSessionController extends Notifier<AiSpeakingSessionState> {
   }
 
   Future<void> _cleanupAsr() async {
+    // 清理时丢弃尚未补发的插话音频，避免泄漏到下一轮会话。
+    _cancelBargeInEndOfSpeechTimer();
+    _pendingAsrSeedFrames = const [];
+    _clearBargeInBuffers();
     final preview = _localStreamingTranscriber;
     _localStreamingTranscriber = null;
     preview?.stop();
