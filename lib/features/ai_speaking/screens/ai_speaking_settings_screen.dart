@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../providers/short_audio_player_provider.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/byok_ai_service.dart';
 import '../../../theme/app_theme.dart';
@@ -11,9 +10,8 @@ import '../../../widgets/common/app_dropdown.dart';
 import '../data/ai_speaking_credential_store.dart';
 import '../models/ai_llm_provider.dart';
 import '../models/ai_speaking_settings.dart';
-import '../providers/ai_speaking_session_controller.dart';
 import '../providers/ai_speaking_settings_provider.dart';
-import '../services/aliyun_tts_client.dart';
+import 'speaking_engine_settings_screen.dart';
 
 /// AI 设置页：大模型与阿里云语音服务配置。
 class AiSpeakingSettingsScreen extends ConsumerStatefulWidget {
@@ -26,11 +24,6 @@ class AiSpeakingSettingsScreen extends ConsumerStatefulWidget {
 
 class _AiSpeakingSettingsScreenState
     extends ConsumerState<AiSpeakingSettingsScreen> {
-  static const _ttsModels = <String>[
-    AiSpeechConfig.defaultTtsModel,
-    AiSpeechConfig.flashTtsModel,
-  ];
-
   late final TextEditingController _baseUrlController;
   late final TextEditingController _modelController;
   late final TextEditingController _llmKeyController;
@@ -40,7 +33,6 @@ class _AiSpeakingSettingsScreenState
   bool _obscureDashscopeKey = true;
   bool _savingLlmKey = false;
   bool _savingDashscopeKey = false;
-  bool _previewing = false;
   bool _loadingModels = false;
   bool _testingLlm = false;
   bool _testSucceeded = false;
@@ -157,36 +149,12 @@ class _AiSpeakingSettingsScreenState
     }
   }
 
-  Future<void> _previewVoice() async {
-    if (_previewing) return;
-    final l10n = AppLocalizations.of(context)!;
-    setState(() => _previewing = true);
-    try {
-      final apiKey = await ref
-          .read(aiSpeakingCredentialStoreProvider)
-          .readDashscopeApiKey();
-      if (apiKey == null || apiKey.trim().isEmpty) {
-        _showMessage(l10n.aiSpeakingMissingConfig);
-        return;
-      }
-      final config = ref.read(aiSpeakingSettingsProvider).speech;
-      final path = await ref
-          .read(aiTtsClientProvider)
-          .synthesizeToFile(
-            text: 'Hello! This is how I will sound during our English conversation.',
-            config: config,
-            apiKey: apiKey.trim(),
-          );
-      await ref
-          .read(shortAudioPlayerProvider)
-          .playFile(path, playbackKey: 'ai_speaking_preview');
-    } on AiTtsException catch (error) {
-      _showMessage(error.message);
-    } on Object {
-      _showMessage(l10n.aiSpeakingPreviewFailed);
-    } finally {
-      if (mounted) setState(() => _previewing = false);
-    }
+  Future<void> _openSpeakingEngine() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const SpeakingEngineSettingsScreen(),
+      ),
+    );
   }
 
   /// 用当前供应商、模型、温度与推理强度发送一次最小请求，验证配置是否可用。
@@ -256,14 +224,6 @@ class _AiSpeakingSettingsScreenState
     final settings = ref.watch(aiSpeakingSettingsProvider);
     final secretStatus = ref.watch(aiSpeakingSecretStatusProvider).value;
     final isCustom = settings.llm.provider.isCustom;
-    final voiceOptions = AiSpeechConfig.voicesForModel(
-      settings.speech.ttsModel,
-    );
-    final selectedVoice = AiSpeechConfig.resolveTtsVoice(
-      model: settings.speech.ttsModel,
-      voice: settings.speech.ttsVoice,
-    );
-
     return Scaffold(
       appBar: AppBar(title: Text(l10n.aiSpeakingSettingsTitle)),
       body: ListView(
@@ -543,105 +503,26 @@ class _AiSpeakingSettingsScreenState
                 ),
               ),
               _FieldBlock(
-                label: l10n.aiSpeakingTtsModelLabel,
-                child: _dropdownContainer(
-                  child: AppDropdown<String>(
-                    value: settings.speech.ttsModel,
-                    isExpanded: true,
-                    items: _ttsModels
-                        .map(
-                          (model) => DropdownMenuItem<String>(
-                            value: model,
-                            child: Text(model),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (model) {
-                      if (model == null) return;
-                      ref
-                          .read(aiSpeakingSettingsProvider.notifier)
-                          .setTtsModel(model);
-                    },
-                  ),
-                ),
-              ),
-              _FieldBlock(
-                label: l10n.aiSpeakingVoiceLabel,
-                child: _dropdownContainer(
-                  child: AppDropdown<String>(
-                    value: selectedVoice,
-                    isExpanded: true,
-                    items: voiceOptions
-                        .map(
-                          (voice) => DropdownMenuItem<String>(
-                            value: voice.value,
-                            child: Text(
-                              voice.displayLabel,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (voice) {
-                      if (voice == null) return;
-                      ref
-                          .read(aiSpeakingSettingsProvider.notifier)
-                          .setTtsVoice(voice);
-                    },
-                  ),
-                ),
-              ),
-              _FieldBlock(
-                label: l10n.aiSpeakingRateLabel,
-                child: Row(
+                label: l10n.aiSpeakingVoiceConfigLabel,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Slider(
-                        min: 0.5,
-                        max: 2,
-                        divisions: 15,
-                        value: settings.speech.ttsRate,
-                        label: settings.speech.ttsRate.toStringAsFixed(1),
-                        onChanged: (value) => ref
-                            .read(aiSpeakingSettingsProvider.notifier)
-                            .setTtsRate(value),
-                      ),
+                    Text(
+                      l10n.aiSpeakingVoiceConfigHint,
+                      style: AppTextStyles.label(context).copyWith(height: 1.5),
                     ),
-                    SizedBox(
-                      width: 40,
-                      child: Text(
-                        settings.speech.ttsRate.toStringAsFixed(1),
-                        textAlign: TextAlign.end,
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _openSpeakingEngine,
+                        child: Text(l10n.aiSpeakingOpenSpeakingEngine),
                       ),
                     ),
                   ],
                 ),
               ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(l10n.aiSpeakingAutoPlayLabel),
-                value: settings.speech.autoPlay,
-                onChanged: (value) => ref
-                    .read(aiSpeakingSettingsProvider.notifier)
-                    .setAutoPlay(value),
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _previewing ? null : _previewVoice,
-                  icon: _previewing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.play_arrow_rounded),
-                  label: Text(l10n.aiSpeakingPreview),
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: AppSpacing.l),
           _SettingsCard(
             children: [
               _FieldBlock(

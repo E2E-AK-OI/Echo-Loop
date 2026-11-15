@@ -13,6 +13,7 @@ class AiSpeakingMessage {
     required this.status,
     required this.createdAt,
     this.audioPath,
+    this.wasInterrupted = false,
   });
 
   final String id;
@@ -22,10 +23,14 @@ class AiSpeakingMessage {
   final DateTime createdAt;
   final String? audioPath;
 
+  /// 用户开口打断过这条回复；正文仍然保留完整生成结果。
+  final bool wasInterrupted;
+
   AiSpeakingMessage copyWith({
     String? content,
     AiSpeakingMessageStatus? status,
     String? audioPath,
+    bool? wasInterrupted,
   }) {
     return AiSpeakingMessage(
       id: id,
@@ -34,6 +39,7 @@ class AiSpeakingMessage {
       status: status ?? this.status,
       createdAt: createdAt,
       audioPath: audioPath ?? this.audioPath,
+      wasInterrupted: wasInterrupted ?? this.wasInterrupted,
     );
   }
 }

@@ -63,23 +63,25 @@ class SpeakingEngineSettings {
   /// 从本地偏好同步读取；未知值回退到 AI 服务。
   factory SpeakingEngineSettings.fromPrefsSync(SharedPreferences prefs) {
     return SpeakingEngineSettings(
-      asrSource: _parseAsrSource(
+      asrSource: parseAsrSource(
         prefs.getString(SpeakingEngineSettingsKeys.asrSource),
       ),
-      ttsSource: _parseTtsSource(
+      ttsSource: parseTtsSource(
         prefs.getString(SpeakingEngineSettingsKeys.ttsSource),
       ),
     );
   }
 
-  static SpeakingAsrSource _parseAsrSource(String? value) {
+  /// 解析语音识别来源；未知值回退到 AI 服务。
+  static SpeakingAsrSource parseAsrSource(String? value) {
     return SpeakingAsrSource.values.firstWhere(
       (source) => source.name == value,
       orElse: () => SpeakingAsrSource.ai,
     );
   }
 
-  static SpeakingTtsSource _parseTtsSource(String? value) {
+  /// 解析语音合成来源；未知值回退到 AI 服务。
+  static SpeakingTtsSource parseTtsSource(String? value) {
     return SpeakingTtsSource.values.firstWhere(
       (source) => source.name == value,
       orElse: () => SpeakingTtsSource.ai,

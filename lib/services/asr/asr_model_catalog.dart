@@ -7,14 +7,33 @@ library;
 /// 所有 Whisper 模型共享的 VAD 资源 ID。
 const vadModelId = 'silero-vad';
 
+/// SenseVoice Small 多语种模型的资源 ID（口语特级档使用）。
+const senseVoiceSmallModelId = 'sense-voice-small-int8';
+
+/// 直链下载的单个模型文件。
+class AsrModelFileDownload {
+  const AsrModelFileDownload({
+    required this.fileName,
+    required this.uri,
+    required this.sha256,
+    required this.sizeBytes,
+  });
+
+  final String fileName;
+  final String uri;
+  final String sha256;
+  final int sizeBytes;
+}
+
 class AsrModelResourceSpec {
   const AsrModelResourceSpec({
     required this.id,
-    required this.archivePath,
-    required this.sha256,
+    this.archivePath = '',
+    this.sha256 = '',
     required this.estimatedDownloadBytes,
     required this.requiredFiles,
     this.dependencies = const [],
+    this.files = const [],
   });
 
   final String id;
@@ -23,6 +42,11 @@ class AsrModelResourceSpec {
   final int estimatedDownloadBytes;
   final List<String> requiredFiles;
   final List<String> dependencies;
+
+  /// 非空表示该资源由若干直链文件组成，而不是一个 CDN 归档。
+  final List<AsrModelFileDownload> files;
+
+  bool get isDirect => files.isNotEmpty;
 }
 
 const asrModelResourceCatalog = <String, AsrModelResourceSpec>{
@@ -68,5 +92,29 @@ const asrModelResourceCatalog = <String, AsrModelResourceSpec>{
       'small.en-tokens.txt',
     ],
     dependencies: [vadModelId],
+  ),
+  // SenseVoice 官方仓库只提供原始 ONNX 与词表，没有可直接安装的 CDN 归档，
+  // 因此按文件直链下载；SHA-256 来自 HuggingFace LFS 元数据与本地实测。
+  senseVoiceSmallModelId: AsrModelResourceSpec(
+    id: senseVoiceSmallModelId,
+    estimatedDownloadBytes: 239549735,
+    requiredFiles: ['model.int8.onnx', 'tokens.txt'],
+    dependencies: [vadModelId],
+    files: [
+      AsrModelFileDownload(
+        fileName: 'model.int8.onnx',
+        uri: 'https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx',
+        sha256:
+            'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
+        sizeBytes: 239233841,
+      ),
+      AsrModelFileDownload(
+        fileName: 'tokens.txt',
+        uri: 'https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt',
+        sha256:
+            'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc',
+        sizeBytes: 315894,
+      ),
+    ],
   ),
 };

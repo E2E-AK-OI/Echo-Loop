@@ -1968,6 +1968,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get asrModelAccurateDescription => '准确率更高，但体积更大、速度更慢。';
 
   @override
+  String get asrModelPerfectDescription => '口语识别专用，支持中英日韩粤，首次下载约 250 MB。';
+
+  @override
   String get localSpeechRecognition => '本地语音识别';
 
   @override
@@ -5666,6 +5669,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSpeakingAsrModelLabel => 'ASR 模型';
 
   @override
+  String get aiSpeakingAsrModelBatchSuffix => '非实时（整段上传）';
+
+  @override
   String get aiSpeakingTtsModelLabel => 'TTS 模型';
 
   @override
@@ -5681,6 +5687,31 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSpeakingPreview => '试听音色';
 
   @override
+  String get aiSpeakingRealtimeSection => '实时语音（特级）';
+
+  @override
+  String get aiSpeakingRealtimeHintTitle => '端到端实时语音';
+
+  @override
+  String get aiSpeakingRealtimeHintBody =>
+      '特级档把语音识别、对话与语音合成交给同一个实时模型，回复边生成边播放；声音从本机直接发送到阿里云百炼。';
+
+  @override
+  String get aiSpeakingRealtimeModelLabel => '实时语音模型';
+
+  @override
+  String get aiSpeakingRealtimeVoiceLabel => '实时音色';
+
+  @override
+  String get aiSpeakingRealtimeTurnDetectionLabel => '语音判停';
+
+  @override
+  String get aiSpeakingRealtimeTurnSmartV2 => '语义判停（推荐）';
+
+  @override
+  String get aiSpeakingRealtimeTurnServerVad => '静音判停';
+
+  @override
   String get aiSpeakingPrivacyTitle => '隐私与费用';
 
   @override
@@ -5692,6 +5723,107 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiSpeakingPermissionDenied => '需要麦克风权限。';
+
+  @override
+  String get aiSpeakingLevelSection => '对话档位';
+
+  @override
+  String get aiSpeakingLevelHint => '初级保留按键说话；中级及以上为免提连续会话。';
+
+  @override
+  String get aiSpeakingLevelBeginner => '初级';
+
+  @override
+  String get aiSpeakingLevelBeginnerDescription => '按键说话、再次按键提交。AI 说话时不能插话。';
+
+  @override
+  String get aiSpeakingLevelIntermediate => '中级';
+
+  @override
+  String get aiSpeakingLevelIntermediateDescription =>
+      '点一次话筒开始对话，再点一次停止。由 VAD 自动判断轮次，仍不允许插话。';
+
+  @override
+  String get aiSpeakingLevelAdvanced => '高级';
+
+  @override
+  String get aiSpeakingLevelAdvancedDescription =>
+      '可在 AI 说话时插话打断，使用云端实时语音模型，对网络质量敏感。';
+
+  @override
+  String get aiSpeakingLevelExpert => '特级';
+
+  @override
+  String get aiSpeakingLevelExpertDescription => '由单个语音到语音模型完成听说，判停由模型负责。';
+
+  @override
+  String get aiSpeakingLevelPendingNotice => '此档位的端到端语音模型尚未接入，练习仍使用按键说话。';
+
+  @override
+  String get aiSpeakingSessionStart => '开始对话';
+
+  @override
+  String get aiSpeakingSessionStop => '结束对话';
+
+  @override
+  String get aiSpeakingSessionActive => '对话进行中';
+
+  @override
+  String get aiSpeakingPreparing => '正在准备麦克风…';
+
+  @override
+  String get aiSpeakingSessionHint => '正常说话即可，麦克风保持开启。';
+
+  @override
+  String get aiSpeakingBargeInHint => '可随时开口打断 AI。';
+
+  @override
+  String get aiSpeakingBargeInUnavailableHint => '当前外放不支持语音打断，可点停止结束朗读。';
+
+  @override
+  String get aiSpeakingInterrupted => '已打断';
+
+  @override
+  String get speakingDialogSection => '对话与会话';
+
+  @override
+  String get speakingDialogEndOfSpeechLabel => '尾静音断句';
+
+  @override
+  String get speakingDialogEndOfSpeechDescription =>
+      '停顿多久算说完。超过 2000ms 也会强制断句。';
+
+  @override
+  String speakingDialogEndOfSpeechValue(String value) {
+    return '$value 毫秒';
+  }
+
+  @override
+  String get speakingDialogIdleExitLabel => '空闲退出';
+
+  @override
+  String get speakingDialogIdleExitDescription => '多久没有用户语音就自动结束本次会话。';
+
+  @override
+  String speakingDialogIdleExitValue(String value) {
+    return '$value 秒';
+  }
+
+  @override
+  String get speakingDialogBargeInLabel => '打断灵敏度';
+
+  @override
+  String get speakingDialogBargeInDescription =>
+      '灵敏度越高越容易打断，但也更容易被外放回声误触发；外放建议用「低」。';
+
+  @override
+  String get speakingDialogBargeInLow => '低';
+
+  @override
+  String get speakingDialogBargeInMedium => '中';
+
+  @override
+  String get speakingDialogBargeInHigh => '高';
 
   @override
   String get aiSpeakingOpenSettings => '打开系统设置';
@@ -5754,6 +5886,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get speakingEngineTtsSection => '语音合成';
 
   @override
+  String get speakingEngineLocalAsrTitle => '本地语音识别引擎';
+
+  @override
+  String get speakingEngineLocalTtsTitle => '本地语音合成引擎';
+
+  @override
   String get speakingEngineLlmSection => '大模型';
 
   @override
@@ -5795,6 +5933,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get speakingEngineOpenTtsSettings => '前往语音合成设置';
+
+  @override
+  String get aiSpeakingVoiceConfigLabel => '语音模型与音色';
+
+  @override
+  String get aiSpeakingVoiceConfigHint =>
+      '语音识别来源、合成模型、音色、语速与实时语音参数已改为按档位保存，请在「口语引擎」中选择对应档位标签调整。';
+
+  @override
+  String get aiSpeakingOpenSpeakingEngine => '打开口语引擎';
+
+  @override
+  String get speakingEngineAdvancedNeedsCloudAsr =>
+      '高级档位需要云端实时语音识别，请把语音识别切换为 AI。';
 
   @override
   String get speakingEngineAsrNotReady => '本地语音识别模型尚未就绪，请先在语音识别设置中下载模型。';

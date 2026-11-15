@@ -16,9 +16,6 @@ import '../database/app_database.dart';
 import '../database/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/developer_options_provider.dart';
-import '../providers/offline_asr_settings_provider.dart';
-import '../providers/tts/tts_settings_provider.dart';
-import '../services/tts/tts_engine.dart';
 import '../providers/package_info_provider.dart';
 import '../providers/reminder_settings_provider.dart';
 import '../providers/sentence_ai_provider.dart';
@@ -46,10 +43,8 @@ import '../theme/app_theme.dart';
 import '../providers/dictionary/dictionary_registry.dart';
 import '../providers/dictionary/visible_sources_provider.dart';
 import '../widgets/dictionary/dict_source_presentation.dart';
-import 'asr_settings_screen.dart';
 import 'dictionary_settings_screen.dart';
 import 'display_settings_screen.dart';
-import 'tts_settings_screen.dart';
 import 'learning_settings_screen.dart';
 import 'log_viewer_screen.dart';
 import 'playback_settings_screen.dart';
@@ -64,7 +59,8 @@ import '../features/ai_speaking/models/speaking_engine_settings.dart';
 import '../features/ai_speaking/providers/ai_speaking_settings_provider.dart';
 import '../features/ai_speaking/services/ai_speaking_permission_service.dart';
 import '../features/ai_speaking/screens/ai_speaking_settings_screen.dart';
-import '../features/ai_speaking/providers/speaking_engine_settings_provider.dart';
+import '../features/ai_speaking/providers/ai_speaking_level_provider.dart';
+import '../features/ai_speaking/providers/speaking_level_configs_provider.dart';
 import '../features/ai_speaking/screens/speaking_engine_settings_screen.dart';
 
 const double _settingsLeadingIconExtent = 32;
@@ -165,7 +161,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   ) {
     final reminderSettings = ref.watch(reminderSettingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
-    final showAsr = ref.watch(showOfflineAsrSectionProvider);
     final settings = ref.watch(appSettingsProvider);
     final settingsController = ref.read(appSettingsProvider.notifier);
 
@@ -214,51 +209,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
         ),
-        if (showAsr)
-          ListTile(
-            leading: _settingsThemedSvgIcon(
-              context,
-              'assets/icon/microphone.svg',
-            ),
-            title: Text(l10n.speechRecognition),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  ref.watch(offlineAsrSettingsProvider).backend ==
-                          AsrBackend.platform
-                      ? l10n.asrBackendPlatform
-                      : l10n.asrBackendOffline,
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                const Icon(Icons.chevron_right),
-              ],
-            ),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const AsrSettingsScreen(),
-              ),
-            ),
-          ),
-        ListTile(
-          leading: _settingsSvgIcon('assets/icon/speaker.svg'),
-          title: Text(l10n.ttsSettings),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _ttsEngineSummary(l10n, ref.watch(ttsSettingsProvider).engine),
-                style: TextStyle(color: colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: AppSpacing.xs),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const TtsSettingsScreen()),
-          ),
-        ),
         if (ref.watch(aiSpeakingPermissionServiceProvider).isSupported)
           ListTile(
             leading: _settingsThemedSvgIcon(
@@ -296,7 +246,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Text(
                   _speakingEngineSummary(
                     l10n,
-                    ref.watch(speakingEngineSettingsProvider),
+                    _currentEngineSettings(),
                     ref.watch(aiSpeakingSettingsProvider),
                   ),
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
@@ -366,6 +316,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return '$providerLabel · ${settings.llm.model}';
   }
 
+  /// 当前练习档位的引擎来源；档位配置缺失时回退默认值。
+  SpeakingEngineSettings _currentEngineSettings() {
+    final level = ref.watch(aiSpeakingLevelProvider);
+    return ref.watch(speakingLevelConfigsProvider)[level]?.engine ??
+        SpeakingEngineSettings.defaults;
+  }
+
   /// 口语引擎入口摘要：识别来源、合成来源与当前大模型。
   String _speakingEngineSummary(
     AppLocalizations l10n,
@@ -380,15 +337,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         : l10n.speakingEngineSourceAi;
     return '${l10n.speakingEngineSummaryAsr} $asr · '
         '${l10n.speakingEngineSummaryTts} $tts · ${aiSettings.llm.model}';
-  }
-
-  /// 设置首页仅展示当前语音引擎品牌，口音和音色留在语音合成详情页展示。
-  String _ttsEngineSummary(AppLocalizations l10n, TtsEngineKind engine) {
-    return switch (engine) {
-      TtsEngineKind.platform => platformSpeechEngineName(l10n),
-      TtsEngineKind.edge => l10n.ttsEngineEdge,
-      TtsEngineKind.kokoro || TtsEngineKind.piper => l10n.asrBackendOffline,
-    };
   }
 
   /// 构建存储管理区域

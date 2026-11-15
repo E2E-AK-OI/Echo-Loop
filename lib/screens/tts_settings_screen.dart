@@ -30,7 +30,10 @@ import '../widgets/common/prewarm_visibility.dart';
 
 /// 语音合成设置页。
 class TtsSettingsScreen extends ConsumerStatefulWidget {
-  const TtsSettingsScreen({super.key});
+  const TtsSettingsScreen({super.key, this.embedded = false});
+
+  /// 是否以内嵌形式展示（嵌入口语引擎页时不再套一层页面骨架与预热可见性）。
+  final bool embedded;
 
   @override
   ConsumerState<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
@@ -84,6 +87,14 @@ class _TtsSettingsScreenState extends ConsumerState<TtsSettingsScreen> {
         }
       }),
     );
+    if (widget.embedded) {
+      // 内嵌模式没有独立的可见性回调，进页即加载模型安装状态。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref
+            .read(ttsModelInstallationGateProvider)
+            .ensureInstallationStatesLoaded();
+      });
+    }
   }
 
   /// 页面每次重新可见都重新检查安装状态并启动对应预热批次。
@@ -158,6 +169,165 @@ class _TtsSettingsScreenState extends ConsumerState<TtsSettingsScreen> {
     // 预热触发（就绪翻转 / 变体切换）已移至 initState 的 listenManual。
     _controller = ref.read(ttsControllerProvider.notifier);
 
+    final content = <Widget>[
+      // 说明文字
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.s,
+          0,
+          AppSpacing.s,
+          AppSpacing.m,
+        ),
+        child: Text(
+          l10n.ttsSettingsDescription,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+
+      // 合成引擎
+      _SectionLabel(text: l10n.ttsEngine),
+      Card(
+        child: RadioGroup<TtsEngineKind>(
+          groupValue: settings.engine,
+          onChanged: _onEngineChanged,
+          child: Column(
+            children: [
+              RadioListTile<TtsEngineKind>(
+                title: Text(l10n.ttsEngineEdge),
+                subtitle: Text(
+                  l10n.ttsEngineEdgeDescription,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.6,
+                    ),
+                  ),
+                ),
+                value: TtsEngineKind.edge,
+                selected: isEdge,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              if (showPlatformEngine) ...[
+                RadioListTile<TtsEngineKind>(
+                  title: Text(platformSpeechEngineName(l10n)),
+                  subtitle: Text(
+                    l10n.ttsEnginePlatformDescription,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.6,
+                      ),
+                    ),
+                  ),
+                  value: TtsEngineKind.platform,
+                  selected: settings.engine == TtsEngineKind.platform,
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+              ],
+              RadioListTile<TtsEngineKind>(
+                title: Text(l10n.ttsEnginePiper),
+                subtitle: Text(
+                  l10n.ttsEnginePiperDescription,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.6,
+                    ),
+                  ),
+                ),
+                value: TtsEngineKind.piper,
+                selected: settings.engine == TtsEngineKind.piper,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              RadioListTile<TtsEngineKind>(
+                title: Text(l10n.ttsEngineEchoLoop),
+                subtitle: Text(
+                  l10n.ttsEngineEchoLoopDescription,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.6,
+                    ),
+                  ),
+                ),
+                value: TtsEngineKind.kokoro,
+                selected: settings.engine == TtsEngineKind.kokoro,
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      if (isEchoLoop) ...[
+        // Echo Loop（自然/Kokoro）专属：归属标题 + 一张卡（模型 + 音色单行）。
+        // 不显示独立口音——音色名已自带口音，选音色即定口音（见 _VoiceDisclosure）。
+        const SizedBox(height: AppSpacing.m),
+        _SectionLabel(text: l10n.ttsEngineEchoLoop),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _ModelPicker(l10n: l10n, theme: theme),
+              if (ready) ...[
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _VoiceDisclosure(l10n: l10n),
+              ],
+            ],
+          ),
+        ),
+      ] else if (isEdge) ...[
+        // Edge 在线：音色列表（无下载），点击即选中并试听；残留本地模型仍可清理。
+        const SizedBox(height: AppSpacing.m),
+        _SectionLabel(text: l10n.ttsEngineEdge),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: _EdgeVoiceList(l10n: l10n),
+        ),
+        if (anyDownloaded) ...[
+          const SizedBox(height: AppSpacing.m),
+          _ModelStorageRow(l10n: l10n),
+        ],
+      ] else if (isPiper) ...[
+        // Piper（平衡）专属：归属标题 + 音色列表（每音色一个独立模型，
+        // 行内显示各自下载状态，点击就绪音色即试听、点未下载音色即下载）。
+        const SizedBox(height: AppSpacing.m),
+        _SectionLabel(text: l10n.ttsEnginePiper),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: _PiperVoiceList(l10n: l10n),
+        ),
+      ] else ...[
+        // 平台 TTS：无具名音色，仅显示口音（美/英，决定系统音色语言）。
+        // 点击口音即选中并试听该口音（进页已后台预热，多数秒播）。
+        const SizedBox(height: AppSpacing.m),
+        // 提示弱化显示在「口音」分组标题后：部分机型/系统语音不区分美/英音。
+        _SectionLabel(text: l10n.ttsAccent, hint: l10n.ttsAccentHint),
+        Card(
+          child: Column(
+            children: [
+              _AccentPreviewRow(accent: TtsAccent.us, l10n: l10n),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              _AccentPreviewRow(accent: TtsAccent.uk, l10n: l10n),
+            ],
+          ),
+        ),
+
+        // 本地仍有残留模型（非当前引擎、未在使用）：收成一行存储清理入口，
+        // 不再平铺两张模型卡（避免在「平台 TTS」下误读为可选设置）。
+        if (anyDownloaded) ...[
+          const SizedBox(height: AppSpacing.m),
+          _ModelStorageRow(l10n: l10n),
+        ],
+      ],
+    ];
+
+    if (widget.embedded) {
+      return ListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: content,
+      );
+    }
+
     return PrewarmVisibility(
       mainTabIndex: 3,
       onChanged: _onPrewarmVisibilityChanged,
@@ -165,154 +335,7 @@ class _TtsSettingsScreenState extends ConsumerState<TtsSettingsScreen> {
         appBar: AppBar(title: Text(l10n.ttsSettings)),
         body: ListView(
           padding: const EdgeInsets.all(AppSpacing.m),
-          children: [
-            // 说明文字
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.s,
-                0,
-                AppSpacing.s,
-                AppSpacing.m,
-              ),
-              child: Text(
-                l10n.ttsSettingsDescription,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-
-            // 合成引擎
-            _SectionLabel(text: l10n.ttsEngine),
-            Card(
-              child: RadioGroup<TtsEngineKind>(
-                groupValue: settings.engine,
-                onChanged: _onEngineChanged,
-                child: Column(
-                  children: [
-                    RadioListTile<TtsEngineKind>(
-                      title: Text(l10n.ttsEngineEdge),
-                      subtitle: Text(
-                        l10n.ttsEngineEdgeDescription,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.6,
-                          ),
-                        ),
-                      ),
-                      value: TtsEngineKind.edge,
-                      selected: isEdge,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    if (showPlatformEngine) ...[
-                      RadioListTile<TtsEngineKind>(
-                        title: Text(platformSpeechEngineName(l10n)),
-                        subtitle: Text(
-                          l10n.ttsEnginePlatformDescription,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.6),
-                          ),
-                        ),
-                        value: TtsEngineKind.platform,
-                        selected: settings.engine == TtsEngineKind.platform,
-                      ),
-                      const Divider(height: 1, indent: 16, endIndent: 16),
-                    ],
-                    RadioListTile<TtsEngineKind>(
-                      title: Text(l10n.ttsEnginePiper),
-                      subtitle: Text(
-                        l10n.ttsEnginePiperDescription,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.6,
-                          ),
-                        ),
-                      ),
-                      value: TtsEngineKind.piper,
-                      selected: settings.engine == TtsEngineKind.piper,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    RadioListTile<TtsEngineKind>(
-                      title: Text(l10n.ttsEngineEchoLoop),
-                      subtitle: Text(
-                        l10n.ttsEngineEchoLoopDescription,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.6,
-                          ),
-                        ),
-                      ),
-                      value: TtsEngineKind.kokoro,
-                      selected: settings.engine == TtsEngineKind.kokoro,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            if (isEchoLoop) ...[
-              // Echo Loop（自然/Kokoro）专属：归属标题 + 一张卡（模型 + 音色单行）。
-              // 不显示独立口音——音色名已自带口音，选音色即定口音（见 _VoiceDisclosure）。
-              const SizedBox(height: AppSpacing.m),
-              _SectionLabel(text: l10n.ttsEngineEchoLoop),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    _ModelPicker(l10n: l10n, theme: theme),
-                    if (ready) ...[
-                      const Divider(height: 1, indent: 16, endIndent: 16),
-                      _VoiceDisclosure(l10n: l10n),
-                    ],
-                  ],
-                ),
-              ),
-            ] else if (isEdge) ...[
-              // Edge 在线：音色列表（无下载），点击即选中并试听；残留本地模型仍可清理。
-              const SizedBox(height: AppSpacing.m),
-              _SectionLabel(text: l10n.ttsEngineEdge),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: _EdgeVoiceList(l10n: l10n),
-              ),
-              if (anyDownloaded) ...[
-                const SizedBox(height: AppSpacing.m),
-                _ModelStorageRow(l10n: l10n),
-              ],
-            ] else if (isPiper) ...[
-              // Piper（平衡）专属：归属标题 + 音色列表（每音色一个独立模型，
-              // 行内显示各自下载状态，点击就绪音色即试听、点未下载音色即下载）。
-              const SizedBox(height: AppSpacing.m),
-              _SectionLabel(text: l10n.ttsEnginePiper),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: _PiperVoiceList(l10n: l10n),
-              ),
-            ] else ...[
-              // 平台 TTS：无具名音色，仅显示口音（美/英，决定系统音色语言）。
-              // 点击口音即选中并试听该口音（进页已后台预热，多数秒播）。
-              const SizedBox(height: AppSpacing.m),
-              // 提示弱化显示在「口音」分组标题后：部分机型/系统语音不区分美/英音。
-              _SectionLabel(text: l10n.ttsAccent, hint: l10n.ttsAccentHint),
-              Card(
-                child: Column(
-                  children: [
-                    _AccentPreviewRow(accent: TtsAccent.us, l10n: l10n),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    _AccentPreviewRow(accent: TtsAccent.uk, l10n: l10n),
-                  ],
-                ),
-              ),
-
-              // 本地仍有残留模型（非当前引擎、未在使用）：收成一行存储清理入口，
-              // 不再平铺两张模型卡（避免在「平台 TTS」下误读为可选设置）。
-              if (anyDownloaded) ...[
-                const SizedBox(height: AppSpacing.m),
-                _ModelStorageRow(l10n: l10n),
-              ],
-            ],
-          ],
+          children: content,
         ),
       ),
     );

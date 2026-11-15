@@ -259,8 +259,6 @@ void main() {
         expect(findSvgAsset('assets/icon/speak.svg'), findsOneWidget);
         expect(findSvgAsset('assets/icon/bell.svg'), findsOneWidget);
         expect(findSvgAsset('assets/icon/book-shelf.svg'), findsOneWidget);
-        expect(findSvgAsset('assets/icon/microphone.svg'), findsOneWidget);
-        expect(findSvgAsset('assets/icon/speaker.svg'), findsOneWidget);
         expect(findSvgAsset('assets/icon/play-pause.svg'), findsOneWidget);
         expect(findSvgAsset('assets/icon/locale-1.svg'), findsOneWidget);
 
@@ -282,8 +280,6 @@ void main() {
           '🗣️',
           '🔔',
           '📚',
-          '🎙️',
-          '🔊',
           '▶️',
           '📖',
           '💾',
@@ -352,7 +348,6 @@ void main() {
 
         const visibleAssets = [
           'assets/icon/speak.svg',
-          'assets/icon/microphone.svg',
           'assets/icon/play-pause.svg',
           'assets/icon/lock.svg',
           'assets/icon/feedback.svg',
@@ -438,43 +433,23 @@ void main() {
         expect(find.text('Appearance'), findsOneWidget);
       });
 
-      testWidgets('Speech Recognition 入口仅在开关启用时显示', (tester) async {
-        await tester.pumpWidget(
-          createTestScreen(
-            const SettingsScreen(),
-            overrides: buildOverrides(showOfflineAsrSection: true),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text('Learning'), findsOneWidget);
-        expect(find.text('Speech Recognition'), findsOneWidget);
-      });
-
-      testWidgets('语音合成入口显示当前 Echo Loop 引擎，不显示口音', (tester) async {
-        await tester.pumpWidget(
-          createTestScreen(const SettingsScreen(), overrides: buildOverrides()),
-        );
-        await tester.pumpAndSettle();
-
-        expect(find.text('Text-to-Speech'), findsOneWidget);
-        expect(find.text('Echo Loop AI'), findsOneWidget);
-        expect(find.text('American'), findsNothing);
-      });
-
-      testWidgets('语音合成入口显示 Echo Loop 引擎', (tester) async {
+      testWidgets('语音识别与语音合成入口已合并进口语引擎', (tester) async {
         await tester.pumpWidget(
           createTestScreen(
             const SettingsScreen(),
             overrides: buildOverrides(
+              showOfflineAsrSection: true,
               ttsSettings: const TtsSettings(engine: TtsEngineKind.kokoro),
             ),
           ),
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Text-to-Speech'), findsOneWidget);
-        expect(find.text('Echo Loop AI'), findsOneWidget);
+        expect(find.text('Learning'), findsOneWidget);
+        // 本地识别与合成配置已并入「口语引擎」，设置页不再保留独立入口。
+        expect(find.text('Speech Recognition'), findsNothing);
+        expect(find.text('Text-to-Speech'), findsNothing);
+        expect(find.text('Speaking Engine'), findsOneWidget);
       });
 
       testWidgets('开发者选项关闭时不显示开发者分组', (tester) async {

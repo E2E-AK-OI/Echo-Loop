@@ -1,26 +1,14 @@
 /// 口语引擎来源设置单元测试。
 ///
-/// 覆盖：默认值、SharedPreferences 预读、未知值回退与 Provider 持久化。
+/// 覆盖：默认值、SharedPreferences 预读与未知值回退。
 library;
 
 import 'package:echo_loop/features/ai_speaking/models/speaking_engine_settings.dart';
-import 'package:echo_loop/features/ai_speaking/providers/speaking_engine_settings_provider.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  ProviderContainer makeContainer(SpeakingEngineSettings settings) {
-    final container = ProviderContainer(
-      overrides: [
-        initialSpeakingEngineSettingsProvider.overrideWithValue(settings),
-      ],
-    );
-    addTearDown(container.dispose);
-    return container;
-  }
 
   group('SpeakingEngineSettings', () {
     test('默认全部使用 AI 服务', () {
@@ -65,28 +53,6 @@ void main() {
 
       expect(settings.asrSource, SpeakingAsrSource.ai);
       expect(settings.ttsSource, SpeakingTtsSource.ai);
-    });
-  });
-
-  group('SpeakingEngineSettingsNotifier', () {
-    test('切换来源后持久化到 SharedPreferences', () async {
-      SharedPreferences.setMockInitialValues({});
-      final container = makeContainer(SpeakingEngineSettings.defaults);
-      final notifier = container.read(speakingEngineSettingsProvider.notifier);
-
-      await notifier.setAsrSource(SpeakingAsrSource.local);
-      await notifier.setTtsSource(SpeakingTtsSource.local);
-
-      expect(
-        container.read(speakingEngineSettingsProvider),
-        const SpeakingEngineSettings(
-          asrSource: SpeakingAsrSource.local,
-          ttsSource: SpeakingTtsSource.local,
-        ),
-      );
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString(SpeakingEngineSettingsKeys.asrSource), 'local');
-      expect(prefs.getString(SpeakingEngineSettingsKeys.ttsSource), 'local');
     });
   });
 }

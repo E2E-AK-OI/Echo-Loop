@@ -642,7 +642,7 @@ void _handleTranscribe(
         final stream = recognizer.createStream();
         stream.acceptWaveform(samples: chunk, sampleRate: _asrSampleRate);
         recognizer.decode(stream);
-        final t = recognizer.getResult(stream).text.trim();
+        final t = _cleanTranscript(recognizer.getResult(stream).text);
         if (t.isNotEmpty) texts.add(t);
         stream.free();
       }
@@ -663,7 +663,7 @@ void _handleTranscribe(
         sampleRate: audioData.sampleRate,
       );
       recognizer.decode(stream);
-      final text = recognizer.getResult(stream).text.trim();
+      final text = _cleanTranscript(recognizer.getResult(stream).text);
       stopwatch.stop();
       stream.free();
 
@@ -778,8 +778,9 @@ void _handleTranscribeSegments(
 
 /// 窗口解码函数签名：输入 ≤30s 窗口样本，返回 (whisper 原生 segment 列表[相对窗口
 /// 起点秒], 整段文本)。生产用 [_decodeWindow]（真 recognizer），测试注入 fake。
-typedef WindowDecoder =
-    (List<WhisperSegment>, String) Function(Float32List samples);
+typedef WindowDecoder = (List<WhisperSegment>, String) Function(
+  Float32List samples,
+);
 
 /// 一条字幕 cue（绝对毫秒时间；[slidingWindowCues] 的可测输出类型）。
 @visibleForTesting
@@ -988,7 +989,7 @@ int firstAudibleFrameIndex(Float32List block) {
   final segs = rawJson == null
       ? const <WhisperSegment>[]
       : parseWhisperSegments(rawJson);
-  return (segs, result.text.trim());
+  return (segs, _cleanTranscript(result.text));
 }
 
 /// 无 segment 时间戳时的兜底：把 [text] 按句切分，时间按字符长度在
@@ -1171,6 +1172,12 @@ sherpa.OfflineRecognizerConfig _buildConfig({
         numThreads: numThreads,
         provider: p,
       );
+    case AsrModelType.senseVoice:
+      return _buildSenseVoiceConfig(
+        modelDir: modelDir,
+        numThreads: numThreads,
+        provider: p,
+      );
   }
 }
 
@@ -1231,6 +1238,36 @@ sherpa.OfflineRecognizerConfig _buildWhisperConfig({
 
   return sherpa.OfflineRecognizerConfig(model: model);
 }
+
+/// 构建 SenseVoice 模型配置。
+sherpa.OfflineRecognizerConfig _buildSenseVoiceConfig({
+  required String modelDir,
+  required int numThreads,
+  required String provider,
+}) {
+  final senseVoice = sherpa.OfflineSenseVoiceModelConfig(
+    model: p.join(modelDir, 'model.int8.onnx'),
+    language: 'en',
+    useInverseTextNormalization: true,
+  );
+
+  final model = sherpa.OfflineModelConfig(
+    senseVoice: senseVoice,
+    tokens: p.join(modelDir, 'tokens.txt'),
+    modelType: 'sense_voice',
+    numThreads: numThreads,
+    debug: false,
+    provider: provider,
+  );
+
+  return sherpa.OfflineRecognizerConfig(model: model);
+}
+
+/// 清理模型输出中的控制标签（SenseVoice 会输出 <|en|><|NEUTRAL|> 等）。
+String _cleanTranscript(String text) => text
+    .replaceAll(RegExp(r'<\|[^|]*\|>'), ' ')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
 
 /// 从 modelId 提取 Whisper 文件名前缀。
 String _whisperFilePrefix(String modelId) {

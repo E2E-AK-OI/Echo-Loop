@@ -379,3 +379,171 @@
 - 规则：向已有原生函数插入局部变量前先搜索同名标识符；时间戳、计数这类通用名在长函数里尤其容易撞名。改完两端都要实际编译（Android 走 Gradle，iOS 至少做语法检查），不能只依赖 Dart 侧 analyze。
 - 相关文件：`android/app/src/main/kotlin/app/echoloop/AndroidSpeechPracticeHandler.kt`、`ios/Runner/AppDelegate.swift`。
 - 记录时间：2026-11-12。
+
+### 7.52 mocktail 的 verify 会排除已命中调用：同一方法连续 verify 两次必然对不上
+
+- 现象：特级档打断用例里先 `verify(() => pcmStreamPlayer.write(any())).called(1)` 校验第一段音频，后面再 `verify(() => pcmStreamPlayer.write(any())).called(2)` 断言两段音频都已写入，结果第二次报 `Expected: <2> Actual: <1>`；临时 print 确认 controller 的 `SpeechToSpeechAudio` 分支确实执行了两次。
+- 根因：mocktail 的 `verify` 默认只统计「此前未被 verify 命中过」的调用（内部按已校验调用做排除），因此第二次 verify 只看到新增的 1 次，而不是累计 2 次。
+- 解法：整个用例只保留一次 `verify(() => mock.write(captureAny())).captured`，再用 `expect(captured, [[...], [...]],)` 一次性断言全部调用参数与顺序；需要分阶段断言时改为断言可观察状态（如 `phase`），不要对同一方法重复 verify。
+- 规则：**同一个 mock 方法的调用次数，一个测试里只 verify 一次**；要分阶段校验就用 `captureAny` 收全量后按索引断言，或断言状态而非调用次数。
+- 相关代码：`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
+- 记录时间：2026-11-13。
+
+### 7.53 AudioTrack 流式播放 flush 后必须重启写线程，否则插话一次后彻底静音
+
+- 现象：特级档用户插话时调用 `PcmStreamPlayerHandler.flush()` 清空队列后，新一轮 `response.audio.delta` 仍被 `write()` 收下，但完全听不到声音，且没有任何异常。
+- 根因：写线程的循环条件是 `while (!isReleased && startedGeneration == generation)`；`flush()` 递增 `generation` 让旧线程正常退出，但只清了队列、没有为新 generation 重新起线程，于是后续数据只进队列、永远不被 `AudioTrack.write` 消费。
+- 解法：抽出 `startWriter(track)` 统一创建写线程；`start()` 与 `flush()` 都调用它。`flush()` 顺序为：递增 generation、清队列、`writer?.interrupt()` 并置空、`track.pause()/flush()/play()`、再 `startWriter(track)`。
+- 规则：**凡是靠 generation/epoch 让旧协程或线程退出的实现，重置代次时必须同时重建消费者**；只重置生产侧（队列）不重建消费侧，表现为静默丢数据而不是报错。
+- 相关文件：`android/app/src/main/kotlin/app/echoloop/PcmStreamPlayerHandler.kt`、`lib/features/ai_speaking/services/pcm_stream_player.dart`。
+- 记录时间：2026-11-13。
+
+### 7.54 prod flavor 的 debug 构建也会校验 release 签名，缺 key.properties 时改用 dev flavor
+
+- 现象：`flutter build apk --debug --target-platform android-arm64` 编译阶段全部通过（`:app:compileProdDebugKotlin` 成功），却在 `:app:packageProdDebug` 失败：`SigningConfig "release" is missing required property "storeFile".`
+- 根因：`android/app/build.gradle` 的 prod flavor 复用 release signingConfig，而 release 签名依赖 `android/key.properties`；该文件不入库，本机没有。
+- 解法：加 `--flavor dev`（dev flavor 用 debug 签名），产物为 `build/app/outputs/flutter-apk/app-dev-debug.apk`。
+- 规则：确认新增 Kotlin 是否编出来，不必等 prod packaging 通过——`compileProdDebugKotlin` 在 packaging 之前已执行，可直接查 `build/app/tmp/kotlin-classes/<variant>/` 与 `build/app/intermediates/project_dex_archive/<variant>/` 下是否有对应 `.class`/`.dex`。
+- 噪音：构建日志里 `Could not close incremental caches ... this and base files have different roots`（pub 缓存在 C:、项目在 E:）属非致命告警，任务会回退全量编译，不影响产物。
+- 注意：release 包经 R8 混淆，用字符串在 `classes*.dex` 里搜 `PcmStreamPlayerHandler` 搜不到属正常；要确认编译结果请看 `build/app/tmp/kotlin-classes/<variant>/app/echoloop/` 或 `project_dex_archive/<variant>/`（混淆前）。debug 包不混淆，`classes19.dex` 可直接搜到。
+- dev flavor release 用 debug 签名，`app-dev-release.apk` 与 `app-dev-debug.apk` 的 SHA-256 不同但证书相同（`CN=Android Debug`），可直接覆盖安装。
+- 相关命令：`GRADLE_USER_HOME=/f/devtools/gradle-home GRADLE_OPTS="-Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2" flutter build apk --debug --flavor dev --target-platform android-arm64`（复用 12G 缓存时约 9.5 分钟）。
+- 记录时间：2026-11-13。
+
+### 7.55 不要对整个目录跑 dart format：会重排历史文件并把 LF 写成 CRLF
+
+- 现象：修 bug 后执行 `dart format lib/features/ai_speaking lib/screens`，`lib/screens` 下 18 个与本次改动无关的 screen 被整体重排；`lib/screens/asr_settings_screen.dart` 从 LF（453 行）变成 CRLF（467 行），`git diff` 出现约 920 行噪音，真正的 embedded 改动被淹没。
+- 根因：formatter 会按当前 SDK 风格重排历史代码，且 Windows 上批量写入时把部分文件的行尾改为 CRLF；仓库历史文件是 LF，于是整文件都算改动。
+- 解法：`git checkout --` 还原全部无关文件（含被转换成 CRLF 的 asr/tts 设置页），只对本次真正修改的文件重跑 `dart format`，并重新以 LF 落地 embedded 改动。
+- 规则：**format 的范围等于改动文件清单，不等于目录**；提交前用 `git diff --stat` 检查是否出现整文件级改动，出现就先还原再定位。
+- 相关文件：`lib/screens/asr_settings_screen.dart`、`lib/screens/tts_settings_screen.dart`、`lib/screens/settings_screen.dart`。
+- 记录时间：2026-11-13。
+
+### 7.56 流式 ASR 的中间结果可能是增量片段，最终包可能是整句：必须分句拼装
+
+- 现象：高级档说「I want to book a table」后，AI 只针对最后一个词回答；`finish()` 返回的转写只剩末尾片段。
+- 根因：旧实现只保留 `_latestText`，`sentence_end` 包才追加 `_finalBuffer`；当服务端中间结果的 `text` 是增量片段（或整句但没有 `sentence_end`）时，`_finalText()` 退回最后一个中间片段，前文全部丢失。另一方面，最终包若携带整句文本，直接追加又会与中间片段重复。
+- 解法：按 `sentence_id`/`sentence_begin` 维护「已确认句 + 当前句」：句子切换时把当前句提交进 `_confirmedText`；中间包用 `_mergeSentenceText` 合并（相等/前缀包含/后缀重叠去重，否则空格或 CJK 直拼）；**最终包按整句文本直接覆盖当前句**（服务端最终结果权威）；`finish()` 返回 `_joinText(_confirmedText, _currentSentenceText)`，即使没有 `sentence_end` 也不丢前文。
+- 规则：流式转写不要假设「中间=整句」或「中间=增量」二者之一；用分句状态机同时兼容，最终包永远按整句处理，并为增量、整句覆盖、跨句三种行为各写回归测试。
+- 相关代码：`lib/features/ai_speaking/services/aliyun_realtime_asr_client.dart`、`test/features/ai_speaking/services/aliyun_realtime_asr_client_test.dart`。
+- 记录时间：2026-11-13。
+
+### 7.57 流式 ASR 建连握手期间不能按 400ms 裁剪起音预录
+
+- 现象：高级档说「Tell me something about a movie.」，识别结果总是「something about a movie.」，开头一两个词稳定丢失。
+- 根因：本地 VAD 在开口约 180ms 后才触发，触发时才开始 `asrClient.start()`；建连要等 `task-started`（通常数百毫秒），这期间 PCM 仍按「只保留最近 400ms」裁剪，且这些音频尚未进入 ASR。握手超过约 220ms，开口头几个词就被挤出缓冲，永远补不回来。
+- 解法：新增 `_isAsrStarting`，握手期间把预录上限放宽到 5s（`160000` 字节），建连成功后按时间顺序 `_flushPreroll()` 一次性补发并清空缓冲；取消/失败/会话结束路径复位标志并清空，恢复听音时也清空，避免下一轮补发上一轮尾部。
+- 规则：任何「先等待异步资源、再补发缓冲音频」的链路，缓冲窗口必须覆盖等待时长，而不是只在稳态按固定时长裁剪。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`（`_appendPreroll`/`_flushPreroll`/`_beginSessionUtterance`）。
+- 记录时间：2026-11-13。
+
+### 7.58 实时 ASR 必须从开始听音就连续送流，不能等 VAD 确认开口再建连
+
+- 现象：高级档每句开头 1–2 个词稳定丢失；即使把预录缓冲放大到 5s 并补发，真机仍复现。
+- 根因：旧链路要等本地 VAD 连续有声约 180ms 才调用 `asrClient.start()`，服务端任务从语音中段开始；握手期间音频只存在本地，补发是一次突发，服务端按连续流语义处理时起始段仍可能被丢弃。官方实时识别示例在 `recognizer.call` 后立即持续读麦克风并 `sendAudioFrame`，从会话开始就连续送流。
+- 解法：`startSession`/`_resumeSessionListening` 立即 `_ensureCloudAsr()` 建连，`_onSessionPcm` 每帧持续 `appendPcm`；`speechStarted` 只标记轮次开始，不再负责建连；`_finishSessionUtterance` 先 `await _asrStartFuture` 再 `finish()`，避免握手未完成时按空转写丢掉整段；`startSession` 初始阶段改为 `preparing`，第一帧 PCM 到达后才切 `listening`，避免 UI 已显示「对话进行中」但麦克风尚未启动。
+- 规则：**流式识别服务需要开口前的连续音频作为上下文，建连时机应是「开始听音」而不是「检测到语音」**；preroll 只能作为握手兜底，不能替代连续送流。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`（`_ensureCloudAsr`/`_startCloudAsr`/`_finishSessionUtterance`/`_onSessionPcm`）。
+- 记录时间：2026-11-13。
+
+### 7.59 DashScope 流式 TTS 的 WebSocket 协议要点
+
+- 端点：workspace 为空用 `wss://dashscope.aliyuncs.com/api-ws/v1/inference`；非空用 `wss://<workspace>.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference`，并带 `Authorization: Bearer <key>`，可选 `X-DashScope-WorkSpace`。
+- 顺序：先发 `run-task`（`streaming: duplex`，payload `task_group: audio`、`task: tts`、`function: SpeechSynthesizer`、`model`、`parameters` 含 `text_type: PlainText`、`voice`、`format: pcm`、`sample_rate: 24000`、`volume`、`rate`、`pitch`、`language_hints`、`instruction`、`enable_ssml: false`），等 `task-started` 后发一个或多个 `continue-task`（`payload.input.text`），最后发 `finish-task`；服务端回 `task-finished` 或 `task-failed`。
+- 音频：二进制帧在合成过程中持续下发，PCM 24kHz/16bit/单声道可直接交给 `PcmStreamPlayer`；不要等 `task-finished` 才开始播放，否则失去流式意义。
+- 取消：`finish-task` 的 payload 可传 `{directive: cancel}`；客户端主动取消时关闭 socket 并让流以 cancelled 结束。
+- 规则：TTS 流式协议是「文本可分段输入、音频分片返回」，与 HTTP `/SpeechSynthesizer` 的整段 URL 返回完全不同；不要把 HTTP 的 `output.audio.url` 逻辑套到 WebSocket。
+- 相关代码：`lib/features/ai_speaking/services/aliyun_tts_stream_client.dart`。
+- 记录时间：2026-11-13。
+
+### 7.60 SenseVoice 直链安装与伪流式 WAV 头回填
+
+- 现象：SenseVoice Small 没有 CDN 归档 zip，只有 HuggingFace 上的 `model.int8.onnx` 与 `tokens.txt` 两个直链；录音中的伪流式预览如果直接把当前 WAV 交给离线识别，解码失败且没有任何提示。
+- 安装：`AsrModelResourceSpec` 增加 `files` 直链列表与 `isDirect`；`AsrArchiveInstaller.installFiles` 逐文件下载到 `_download_<resourceId>_<fileName>`，按预期 size 与 SHA-256 校验后移入 staging，再写 manifest 并原子替换目标目录；`.part` 保留以便续传。SenseVoice 两个文件总约 239,549,735 字节（约 228.5 MiB），`model.int8.onnx` SHA-256 `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`，`tokens.txt` SHA-256 `f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc`。
+- 伪流式：录音器启动时写入的 WAV 头中 RIFF chunk size（offset 4）与 data chunk size（offset 40）都是 0，直接复制给解码器会失败；`buildStreamingWavSnapshot` 复制当前字节后按小端回填 `len-8` 与 `len-44`。`LocalAsrStreamingTranscriber` 每 1.2s 取一次快照、写 `partial.wav`、调用共享 `OfflineAsrEngine`，异常静默（停止后的完整识别才是权威结果）。
+- 输出清洗：SenseVoice 会输出 `<|en|><|NEUTRAL|>` 一类标签，`SherpaOnnxEngine._cleanTranscript` 统一用正则去掉 `<\|[^|]*\|>` 并压缩空白。
+- 相关代码：`lib/services/asr/asr_model_catalog.dart`、`lib/services/asr/asr_archive_installer.dart`、`lib/features/ai_speaking/services/local_asr_streaming_transcriber.dart`、`lib/services/asr/sherpa_onnx_engine.dart`。
+- 记录时间：2026-11-13。
+
+### 7.61 流式 TTS 自然结束不能立即 stop AudioTrack
+
+- 现象：高级档 `qwen-audio-3.1-tts-flash` 流式朗读约 1 秒即停，日志显示文本已完整合成，后续 PCM 也持续到达。
+- 根因：`_speakAssistantStreaming` 的 `finally` 无条件 `await player.stop()`；合成速度远快于 24kHz 播放，`PcmStreamPlayerHandler.stopLocked()` 直接 `pause/flush/stop/release`，AudioTrack 队列中已写入但尚未播出的 PCM 被丢弃。
+- 解法：播放器区分「自然收尾」与「强制中断」——新增 `finish()`；原生记录 `framesWritten`，`PcmStreamDrain` 线程先等写队列空、join 写线程，再轮询 `playbackHeadPosition >= framesWritten`，追上后留 100ms 尾音才释放；`start/flush/stop` 取消排空并 `generation += 1`，Dart 侧同样用 generation 忽略过期 finish/stop 结果。控制器只在收到音频、轮次有效且未被取消时 finish，插话/停止仍立即 stop。
+- 规则：**流式播放的「写完了」不等于「播完了」**；自然收尾必须等播放头追上已写入帧数，强制中断必须能立刻打断排空，两者不能共用一个 stop 路径。
+- 相关代码：`lib/features/ai_speaking/services/pcm_stream_player.dart`、`android/app/src/main/kotlin/app/echoloop/PcmStreamPlayerHandler.kt`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`。
+
+### 7.62 VAD 只有单门限时持续有声无法断句，硬上限必须落地
+
+- 现象：中级 SenseVoice 与高级实时 ASR 说完一句后仍保持识别，尾静音 800ms 甚至 2s 都不断句；会话随后在未到空闲退出时间时自动结束。
+- 根因：`VadTurnDetector` 只有一个能量门限，`isVoiced` 时每帧刷新 `_lastVoicedMs`，`speechEnded` 只在 `timestamp - _lastVoicedMs >= endOfSpeech` 时产生；背景噪声、风扇或尾音持续高于门限就永远不会进入静音分支，`idleTimeout` 也因为仍在 speech 相位而不检查。设置模型里的 `SpeakingDialogSettings.hardLimitEndOfSpeechMs = 2000` 从未被生产代码引用。
+- 解法：`VadTurnDetector` 增加 `hardLimit`（默认 2000ms）与 `_peakLevel`；本轮峰值确定后，只有电平高于 `max(门限, 峰值 × 0.7)` 才刷新“最近强语音”，低于该强门限持续满 `hardLimit` 就强制切回静音并返回 `speechEnded`；`mute/unmute/reset` 与正常断句都清空峰值，持续接近峰值的长句不会被截断。控制器用 `SpeakingDialogSettings.hardLimitEndOfSpeechMs` 注入。
+- 规则：**能量 VAD 的尾静音只适用于“声音真的变小”，必须另有“有声但不像人声持续太久”的硬上限兜底**；硬上限必须按本轮峰值自适应，不能直接用固定门限，否则正常长句会被切断。
+- 相关代码：`lib/features/ai_speaking/services/vad_turn_detector.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`。
+- 记录时间：2026-11-13。
+
+### 7.63 免提会话提前结束：空闲计时、原生静音与 ASR 收尾
+
+- 现象：说完一句仍显示识别中，约 10s（云端）或等待更久后会话直接结束，早于设置的 30s 空闲退出。
+- 根因有四处叠加：① `idleTimeout` 不区分会话阶段，AI 思考/朗读期间 VAD 仍在跑，用户不说话就可能计时退出；② 本地 Flutter VAD 门限（0.02）比 Android 原生 `AdaptiveVadThreshold`（0.004–0.015）迟钝，原生已发 `silenceProgress` 但 Flutter 只消费 `audioLevel`，导致本地识别迟迟不结束；③ 云端 ASR 已返回 `sentence_end`（`isFinal`）时控制器只更新 partial，不结束本轮，只能等本地 VAD；④ `asrSession.finish()` 等待 10s 超时、`waitForTranscript` 等待 30s 超时都会走 `_setError` → `_abortSessionOnError`，把一次慢识别升级成整场会话结束。
+- 解法：`idleTimeout` 与 `speechEnded` 只在 `state.phase == listening` 时生效，AI 朗读/思考期间不再误杀会话；本地监听新增 `silenceProgress` 分支，原生静音达到当前档位 EOS 就 `_finishLocalSessionUtterance`；云端 `isFinal` 直接触发 `_finishSessionUtterance`；`_finishSessionUtterance` 用 `_isUtteranceOpen` + `phase == listening` 去重；finish 失败时若已有 partialTranscript，先清 partial 并用该文本继续对话，只有完全无文本才报错；本地 `waitForTranscript` 超时同样回退到停止前捕获的预览文本。
+- 规则：**识别慢是局部失败，不应升级为会话失败**；能拿到部分文本时优先继续对话，只有没有任何可用文本才进入错误态。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`android/app/src/main/kotlin/app/echoloop/AndroidSpeechPracticeHandler.kt`。
+- 记录时间：2026-11-13。
+
+### 7.62 直接用 Gradle 构建 APK 时版本号沿用 local.properties
+
+- 现象：`pubspec.yaml` 已改成 `1.03.4+53`，但 `./gradlew assembleDevRelease` 产出的 APK 仍是 versionCode 52 / versionName 1.03.3。
+- 根因：`android/app/build.gradle.kts` 读取的是 `flutter.versionCode` / `flutter.versionName`，这两个值由 Flutter 工具在 `android/local.properties` 生成；未先跑 `flutter build` 时直接 Gradle 会沿用上一次生成的值。
+- 解法：改完 `pubspec.yaml` 后，把 `android/local.properties` 的 `flutter.versionCode` 与 `flutter.versionName` 同步为 `53` / `1.03.4` 再构建，并用 `output-metadata.json` 与 APK 内的 `versionCode` 核对。`local.properties` 已被 `android/.gitignore` 忽略，不会进提交。
+- 记录时间：2026-11-13。
+
+### 7.64 大模型已流式但 TTS 等全文，首句延迟被整段生成时间拖住
+
+- 现象：AI 口语回复的文字气泡逐字出现，但语音要等整段回复结束才开始；回复越长，首句越晚。
+- 根因：LLM 的 `streamReply` 已经是 SSE 增量输出，控制器也在逐段刷新气泡，但 TTS 入口只接收 `buffer.trim()` 的完整文本；云端 `AliyunTtsStreamClient` 只发送一条 `continue-task` 再 `finish-task`，本地 `TtsCoordinator._renderAndPlay` 也是整段渲染完成后才播放。
+- 解法：新增 `SpeechSentenceSplitter` 从 `delta.content` 增量切句（英文缩写/小数/省略号防误切，首句可在逗号处按 12 词提前切，220 字符兜底）；控制器把句子流送入 TTS，首句到达即建连。云端 `synthesizeChunks` 先发第一条 `continue-task`，随后边收文本边发，文本流结束才 `finish-task`；Android 继续用 `PcmStreamPlayer` 边收 PCM 边播。本地改为逐句 `speak` 队列，每收到一句先 `prewarm`，当前句播放时后续句已在后台合成。三档默认切到 `qwen-audio-3.1-tts-flash` + `Emily_v3.1`。
+- 规则：**上游是流式，下游也必须按增量消费**；只要有一层等待全文，首包延迟就等于“最长生成时间 + 合成时间”。分句器必须处理缩写、小数和超长无标点文本，否则会把一句话切碎或卡住。
+- 未验证：真实 DashScope Key 下同一 task 多条 `continue-task` 的韵律连续性、分句处的自然度与首包延迟。
+- 相关代码：`lib/features/ai_speaking/services/speech_sentence_splitter.dart`、`lib/features/ai_speaking/services/aliyun_tts_stream_client.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`lib/providers/tts/tts_controller_provider.dart`。
+- 记录时间：2026-11-14。
+
+### 7.65 分句朗读提前进入 speaking 后，停止/插话必须同时取消生成
+
+- 现象：第一句刚开始朗读时点停止或插话，声音停了，但大模型回复仍在后台继续生成，消息一直显示“生成中”；自动化测试里还会整轮等待 30 秒超时。
+- 根因：① 分句 TTS 让 `phase` 在 LLM 尚未结束时提前变成 `speaking`，旧 `stopSpeaking`/`_bargeIn` 只停音频，不取消 `_chatCancelToken`，也不结算 streaming 消息；② `_requestAssistantReply` 的 `closeSpeechInput()` 曾经 `await input.close()`，而单订阅 `StreamController` 的 `close()` Future 要等流被消费才完成；TTS 缺 Key、已取消或未订阅时没人消费，整轮回复永久挂起。
+- 解法：`stopSpeaking` 与 `_bargeIn` 增加 `_chatCancelToken?.cancel()` 和 `_settleStreamingMessages()`（移除空 streaming 占位、把有内容的 streaming 置 done）；`closeSpeechInput()` 改为同步函数，内部 `unawaited(input.close())`；停止时同时取消 `_ttsCancelToken` 并停 PCM/本地播放器。
+- 规则：**提前启动的 TTS 会让 speaking 早于生成结束，停止语义必须覆盖“音频 + 上游生成 + 消息状态”三部分**；关闭单订阅流不能 await `close()`，否则消费端缺失时会死锁。
+- 相关代码：`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`。
+- 记录时间：2026-11-14。
+
+### 7.66 高级档外放朗读被自己的回声打断，ASR 把 TTS 尾音当成用户输入
+
+- 现象：高级档使用云端实时 ASR + 云端 TTS 时，AI 开始朗读通常只播出第一个词就停，随后这个音被当成用户插话并触发新一轮回复；中级档在朗读中手动停止后，ASR 也会把 AI 最后一个词识别成用户输入。相同配置换成 SenseVoice Small + Edge TTS 不复现。
+- 根因：① 高级档在 TTS 期间只 `raiseThreshold(0.03–0.06)` 而未 mute VAD，内置扬声器外放时回声能量仍会越过门限，`speechStarted` 直接触发 `_bargeIn`，取消 TTS 后立刻恢复 ASR，尾音进入新一轮识别；② `emitSpeech` 对每个分句无条件创建 `_speakAssistantSentences` future，只有首个存入 `speechFuture`，后续 future 被丢弃却仍会各自建连并调用 `player.start`，反复重置同一个 AudioTrack，放大“只播首词”；③ `stopSpeaking` 旧实现 `unawaited` 停止播放器后立即恢复听音，没有等待扬声器尾音衰减。
+- 解法：① Android `PcmStreamPlayerHandler` 新增 `isSpeakerOutput`（`AudioTrack.getRoutedDevice().type == TYPE_BUILTIN_SPEAKER`，SDK<24 或查询失败按外放处理），`_playTtsChunks` 在 `start` 后查询；外放时置 `state.isVoiceBargeInAvailable=false` 且保持 VAD mute，只保留手动停止，耳机/外接设备才 `_enableBargeInListening`；② `emitSpeech` 仅在 `speechFuture == null` 时启动朗读，后续句子只追加到同一个文本流；③ `_stopTtsPlayback` 改为 `Future<void>` 并 await，`stopSpeaking` 等播放器真正停止后再 `_resumeSessionListening(waitForSpeakerTail: true)`，先留 300ms 静默窗口并重置 preroll，窗口结束后才 unmute 与新建 ASR；④ TTS 启动前 `_suspendSessionAsrForTts` 断开上一轮 ASR。
+- 规则：**外放场景不能只靠能量门限区分回声与人声，必须查询实际播放路由；同一个单订阅文本流也只能有一个 TTS 消费者，分句不能各自启动会话**。
+- 未验证：不同品牌手机的扬声器/耳机/蓝牙路由上报、300ms 尾音静默窗口是否足够、蓝牙 SCO 切换期间的 `routedDevice` 稳定性。
+- 相关代码：`android/app/src/main/kotlin/app/echoloop/PcmStreamPlayerHandler.kt`、`lib/features/ai_speaking/services/pcm_stream_player.dart`、`lib/features/ai_speaking/models/ai_speaking_session_state.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`lib/features/ai_speaking/widgets/ai_speaking_composer.dart`。
+- 后续：该「外放关闭语音插话」方案已被 1.03.8 的平台 AEC + duck 判别替代，见 7.67。
+- 记录时间：2026-11-14。
+
+### 7.67 高级档外放插话不能只靠关闭 VAD，平台 AEC 也有设备差异
+
+- 现象：1.03.7 为规避外放回声，在内置扬声器时直接关闭高级档语音插话。这样虽然不再被自己的声音打断，但不符合高级档「随时可插话」的产品意图。
+- 根因：外放时 TTS 信号会被麦克风拾取，能量 VAD 无法稳定区分回声与人声，单纯抬高门限在音量变化或设备差异下仍会误触发；平台 AEC 只有在录音与播放都使用通话音频路由时才通常把播放信号作为参考，且 `AcousticEchoCanceler.isAvailable()` 只表示系统声称支持，实际效果由厂商实现决定。
+- 解法：① 新增 Android `VoiceAudioSessionHandler`，外放时保存原 AudioManager 状态并切到 `MODE_IN_COMMUNICATION` + `isSpeakerphoneOn=true`，播放使用 `USAGE_VOICE_COMMUNICATION`，录音使用 `VOICE_COMMUNICATION` 与 `MODE_IN_COMMUNICATION`；路由未生效或 AEC 不可用时保持 `isVoiceBargeInAvailable=false`，只允许手动停止。② AEC 可用时 TTS 期间保持 VAD 静音，由 `VoiceBargeInGuard` 直接消费 PCM RMS：持续约 90ms 越过门限后先把 TTS 音量 duck 到 12%，再观察 250ms；仍高于 duck 前参考峰值的 38% 才确认插话，若 500ms 内衰减到环境电平则判定为回声并恢复音量，最长 duck 1.5s。③ ASR 最终文本再经 `EchoTextFilter` 与最近两段 TTS 文本比对，命中则丢弃且不产生用户消息。④ 打断后保留已生成的完整回复并标记「已打断」；本地 TTS 播放器无法调音量，外放时仍关闭语音插话。
+- 规则：**外放插话必须同时满足音频路由、平台 AEC 能力和二次判别，任一环节不可靠就降级手动停止；不要把「VAD 没触发」当成回声已消除**。duck 判别要求播放器可独立调音量，不能调节音量的本地 TTS 路径不要启用。
+- 未验证：不同品牌手机的 AEC 实际效果、耳机/蓝牙/外放切换、duck 音量与 250ms 判别手感、长回复中的打断延迟；当前只覆盖云端 TTS，ASR 在 TTS 期间仍不保持全双工。
+- 相关代码：`android/app/src/main/kotlin/app/echoloop/VoiceAudioSessionHandler.kt`、`android/app/src/main/kotlin/app/echoloop/PcmStreamPlayerHandler.kt`、`lib/features/ai_speaking/services/voice_audio_session.dart`、`lib/features/ai_speaking/services/voice_barge_in_guard.dart`、`lib/features/ai_speaking/services/echo_text_filter.dart`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`lib/features/ai_speaking/services/pcm_recorder.dart`。
+- 记录时间：2026-11-14。
+
+### 7.68 外放 duck 判别每次都被误关闭：收敛后的残留不能回写参考峰值
+
+- 现象：用户报告高级档外放时 TTS 通常只播第一个词就停；排查中又发现平台 AEC 可用时，TTS 播放触发 duck 后约 180ms 插话被判为不可用并关闭，日志中 duck 后紧接 disable，AEC 有效也无法进入确认分支。
+- 根因：`VoiceBargeInGuard._handleDucking` 在 180ms 收敛窗口结束时先执行 `_duckReference = max(_duckReference, _duckResidualPeak)`，再判断残留是否达到 duck 前参考峰值的 70%。参考值被残留抬高后，`残留 >= 参考 × 0.7` 恒为真，于是每次 duck 都走 disable；即使 AEC 已经把回声压到很低，也无法进入「持续人声确认」分支。
+- 解法：收敛结束后不再用残留覆盖 `_duckReference`，参考峰值保持 duck 开始时的 `max(_recentPeak, _candidateThreshold)`；只把 180ms 内的残留峰值用于两个判断：① 残留 >= 参考 × 0.7 时认定 AEC 没有压住回声，返回 disable 并关闭外放插话；② 否则人声阈值取 `max(0.055, 残留 × 1.5, 参考 × 0.38)`，环境阈值取 `max(0.02, 参考 × 0.38 × 0.45)`，再按 250ms 持续人声确认、500ms 静音恢复。测试增加「duck 后先低电平收敛，再出现人声」与「duck 后持续高电平直接 disable」两条路径。
+- 规则：**duck 的参考峰值必须是 duck 前的播放电平，收敛后的残留只能用于判定「AEC 是否有效」，不能反过来抬高参考基线**；否则有效性判断会自我强化，任何设备都会被判为 AEC 失效。外放路径还必须关闭录音 AGC，AGC 会在 duck 后把残留回声重新放大，制造「持续人声」的假象。
+- 未验证：不同品牌手机 AEC 的实际收敛速度、180ms 窗口是否足够、低音量 TTS 下残留比例是否仍按 0.7 分界；当前测试只覆盖合成 PCM 电平和控制器时序，仍待真机验收。
+- 相关代码：`lib/features/ai_speaking/services/voice_barge_in_guard.dart`、`lib/features/ai_speaking/services/voice_audio_session.dart`、`lib/features/ai_speaking/services/pcm_recorder.dart`、`android/app/src/main/kotlin/app/echoloop/VoiceAudioSessionHandler.kt`、`lib/features/ai_speaking/providers/ai_speaking_session_controller.dart`、`test/features/ai_speaking/services/voice_barge_in_guard_test.dart`、`test/features/ai_speaking/providers/ai_speaking_session_controller_test.dart`。
+- 记录时间：2026-11-15。

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import '../app_logger.dart';
 import '../reliable_http_downloader.dart';
 import '../resource_install_manifest.dart';
+import 'asr_model_catalog.dart';
 
 /// ASR 模型归档的下载、断点续传与原子安装流程。
 ///
@@ -60,29 +61,114 @@ class AsrArchiveInstaller {
       staging = await root.createTemp('_staging_${resourceId}_');
       onInstalling?.call();
       await extractAndValidate(archive, staging);
-      await writeResourceInstallManifest(
-        staging,
-        resourceId: resourceId,
-        installAt: DateTime.now(),
-      );
-
-      final previous = Directory('${target.path}.previous');
-      if (previous.existsSync()) await previous.delete(recursive: true);
-      if (target.existsSync()) await target.rename(previous.path);
-      try {
-        await staging.rename(target.path);
-      } catch (_) {
-        if (previous.existsSync() && !target.existsSync()) {
-          await previous.rename(target.path);
-        }
-        rethrow;
-      }
-      if (previous.existsSync()) await previous.delete(recursive: true);
+      await _commit(staging, target, resourceId);
       AppLogger.log('AsrInstall', 'install finished resource=$resourceId');
     } finally {
       await _deleteFileQuietly(archive);
       if (staging != null) await _deleteDirectoryQuietly(staging);
     }
+  }
+
+  /// 按直链文件安装模型（用于没有 CDN 归档的官方仓库资源）。
+  ///
+  /// 每个文件单独下载并校验大小与 SHA-256，全部完成后一次性原子替换目标
+  /// 目录；网络中断时保留下载器的 `.part`，下次继续 Range 续传。
+  Future<void> installFiles({
+    required Directory root,
+    required Directory target,
+    required String resourceId,
+    required List<AsrModelFileDownload> files,
+    CancelToken? cancelToken,
+    void Function(double progress)? onProgress,
+    void Function()? onInstalling,
+  }) async {
+    if (files.isEmpty) {
+      throw ArgumentError.value(files, 'files', '直链资源至少需要一个文件');
+    }
+    await root.create(recursive: true);
+    await _cleanupOrphanedStagingDirectories(root, resourceId);
+    final totalBytes = files.fold<int>(0, (sum, file) => sum + file.sizeBytes);
+    final downloads = <File>[];
+    Directory? staging;
+    var completedBytes = 0;
+    try {
+      staging = await root.createTemp('_staging_${resourceId}_');
+      for (final file in files) {
+        final download = File(
+          p.join(root.path, '_download_${resourceId}_${file.fileName}'),
+        );
+        downloads.add(download);
+        AppLogger.log(
+          'AsrInstall',
+          'downloading resource=$resourceId file=${file.fileName} '
+              'url=${file.uri}',
+        );
+        await _downloader.download(
+          uri: Uri.parse(file.uri),
+          savePath: download.path,
+          identityKey: file.sha256,
+          expectedSize: file.sizeBytes,
+          allowResume: true,
+          cancelToken: cancelToken,
+          onProgress: (received, total) {
+            if (totalBytes <= 0) return;
+            final progress = (completedBytes + received) / totalBytes;
+            onProgress?.call(progress.clamp(0.0, 1.0));
+          },
+        );
+        final actualSize = await download.length();
+        if (actualSize != file.sizeBytes) {
+          throw StateError(
+            'ASR file size mismatch: ${file.fileName} '
+            'expected=${file.sizeBytes} actual=$actualSize',
+          );
+        }
+        final actualSha256 = await sha256.bind(download.openRead()).first;
+        if (actualSha256.toString() != file.sha256) {
+          throw StateError(
+            'ASR file SHA-256 mismatch: ${file.fileName} '
+            'expected=${file.sha256} actual=$actualSha256',
+          );
+        }
+        await download.rename(p.join(staging.path, file.fileName));
+        completedBytes += file.sizeBytes;
+        onProgress?.call((completedBytes / totalBytes).clamp(0.0, 1.0));
+      }
+      onInstalling?.call();
+      await _commit(staging, target, resourceId);
+      AppLogger.log('AsrInstall', 'install finished resource=$resourceId');
+    } finally {
+      for (final download in downloads) {
+        await _deleteFileQuietly(download);
+      }
+      if (staging != null) await _deleteDirectoryQuietly(staging);
+    }
+  }
+
+  /// 写入安装清单并把 staging 原子替换到目标目录。
+  Future<void> _commit(
+    Directory staging,
+    Directory target,
+    String resourceId,
+  ) async {
+    await writeResourceInstallManifest(
+      staging,
+      resourceId: resourceId,
+      installAt: DateTime.now(),
+    );
+
+    final previous = Directory('${target.path}.previous');
+    if (previous.existsSync()) await previous.delete(recursive: true);
+    if (target.existsSync()) await target.rename(previous.path);
+    try {
+      await staging.rename(target.path);
+    } catch (_) {
+      if (previous.existsSync() && !target.existsSync()) {
+        await previous.rename(target.path);
+      }
+      rethrow;
+    }
+    if (previous.existsSync()) await previous.delete(recursive: true);
   }
 
   /// 丢弃用户明确取消的资源下载残留。
@@ -96,6 +182,15 @@ class AsrArchiveInstaller {
     await _deleteFileQuietly(archive);
     await _deleteFileQuietly(File('${archive.path}.part'));
     await _deleteFileQuietly(File('${archive.path}.part.meta.json'));
+    if (root.existsSync()) {
+      final directPrefix = '_download_${resourceId}_';
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is File &&
+            p.basename(entity.path).startsWith(directPrefix)) {
+          await _deleteFileQuietly(entity);
+        }
+      }
+    }
     await _cleanupOrphanedStagingDirectories(root, resourceId);
   }
 

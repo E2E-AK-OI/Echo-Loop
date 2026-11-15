@@ -2048,6 +2048,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'More accurate, but larger and slower.';
 
   @override
+  String get asrModelPerfectDescription =>
+      'Tuned for speaking practice. Supports Chinese, English, Japanese, Korean, and Cantonese; about 250 MB download.';
+
+  @override
   String get localSpeechRecognition => 'Local Speech Recognition';
 
   @override
@@ -5941,6 +5945,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSpeakingAsrModelLabel => 'ASR Model';
 
   @override
+  String get aiSpeakingAsrModelBatchSuffix =>
+      'Non-realtime (upload after speaking)';
+
+  @override
   String get aiSpeakingTtsModelLabel => 'TTS Model';
 
   @override
@@ -5956,6 +5964,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSpeakingPreview => 'Preview voice';
 
   @override
+  String get aiSpeakingRealtimeSection => 'Realtime Speech (Expert)';
+
+  @override
+  String get aiSpeakingRealtimeHintTitle => 'End-to-end realtime speech';
+
+  @override
+  String get aiSpeakingRealtimeHintBody =>
+      'The expert level hands recognition, dialog and speech synthesis to one realtime model, so replies play while they are generated. Audio goes straight from this device to Alibaba Cloud Bailian.';
+
+  @override
+  String get aiSpeakingRealtimeModelLabel => 'Realtime model';
+
+  @override
+  String get aiSpeakingRealtimeVoiceLabel => 'Realtime voice';
+
+  @override
+  String get aiSpeakingRealtimeTurnDetectionLabel => 'Turn detection';
+
+  @override
+  String get aiSpeakingRealtimeTurnSmartV2 => 'Semantic (recommended)';
+
+  @override
+  String get aiSpeakingRealtimeTurnServerVad => 'Silence (server VAD)';
+
+  @override
   String get aiSpeakingPrivacyTitle => 'Privacy & Billing';
 
   @override
@@ -5968,6 +6001,114 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiSpeakingPermissionDenied => 'Microphone permission is required.';
+
+  @override
+  String get aiSpeakingLevelSection => 'Conversation level';
+
+  @override
+  String get aiSpeakingLevelHint =>
+      'Beginner keeps push-to-talk. Intermediate and above run a continuous hands-free session.';
+
+  @override
+  String get aiSpeakingLevelBeginner => 'Beginner';
+
+  @override
+  String get aiSpeakingLevelBeginnerDescription =>
+      'Press to talk, press again to submit. The AI is never interrupted.';
+
+  @override
+  String get aiSpeakingLevelIntermediate => 'Intermediate';
+
+  @override
+  String get aiSpeakingLevelIntermediateDescription =>
+      'Tap the mic once to start and again to stop. Voice activity detection takes turns automatically; the AI still cannot be interrupted.';
+
+  @override
+  String get aiSpeakingLevelAdvanced => 'Advanced';
+
+  @override
+  String get aiSpeakingLevelAdvancedDescription =>
+      'You may interrupt the AI while it speaks. Runs on cloud realtime speech models and needs a stable network.';
+
+  @override
+  String get aiSpeakingLevelExpert => 'Expert';
+
+  @override
+  String get aiSpeakingLevelExpertDescription =>
+      'One speech-to-speech model listens, thinks and speaks. Turn detection is handled by the model.';
+
+  @override
+  String get aiSpeakingLevelPendingNotice =>
+      'The end-to-end speech model for this level is not wired up yet, so practice still uses push-to-talk.';
+
+  @override
+  String get aiSpeakingSessionStart => 'Start conversation';
+
+  @override
+  String get aiSpeakingSessionStop => 'End conversation';
+
+  @override
+  String get aiSpeakingSessionActive => 'Conversation in progress';
+
+  @override
+  String get aiSpeakingPreparing => 'Preparing microphone…';
+
+  @override
+  String get aiSpeakingSessionHint =>
+      'Speak naturally; the microphone stays on.';
+
+  @override
+  String get aiSpeakingBargeInHint => 'Speak anytime to interrupt the AI.';
+
+  @override
+  String get aiSpeakingBargeInUnavailableHint =>
+      'Voice interruption is unavailable on speaker. Tap Stop to end playback.';
+
+  @override
+  String get aiSpeakingInterrupted => 'Interrupted';
+
+  @override
+  String get speakingDialogSection => 'Dialog & session';
+
+  @override
+  String get speakingDialogEndOfSpeechLabel => 'End-of-speech silence';
+
+  @override
+  String get speakingDialogEndOfSpeechDescription =>
+      'How long you may pause before the turn counts as finished. Turns are force-closed at 2000 ms.';
+
+  @override
+  String speakingDialogEndOfSpeechValue(String value) {
+    return '$value ms';
+  }
+
+  @override
+  String get speakingDialogIdleExitLabel => 'Idle exit';
+
+  @override
+  String get speakingDialogIdleExitDescription =>
+      'End the session automatically after this long without any user speech.';
+
+  @override
+  String speakingDialogIdleExitValue(String value) {
+    return '$value s';
+  }
+
+  @override
+  String get speakingDialogBargeInLabel => 'Interruption sensitivity';
+
+  @override
+  String get speakingDialogBargeInDescription =>
+      'Higher sensitivity interrupts more easily but may trigger on speaker echo. Use Low on a speaker.';
+
+  @override
+  String get speakingDialogBargeInLow => 'Low';
+
+  @override
+  String get speakingDialogBargeInMedium => 'Medium';
+
+  @override
+  String get speakingDialogBargeInHigh => 'High';
 
   @override
   String get aiSpeakingOpenSettings => 'Open Settings';
@@ -6034,6 +6175,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get speakingEngineTtsSection => 'Speech Synthesis';
 
   @override
+  String get speakingEngineLocalAsrTitle => 'Local speech recognition engine';
+
+  @override
+  String get speakingEngineLocalTtsTitle => 'Local speech synthesis engine';
+
+  @override
   String get speakingEngineLlmSection => 'Language Model';
 
   @override
@@ -6081,6 +6228,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get speakingEngineOpenTtsSettings => 'Open Speech Synthesis Settings';
+
+  @override
+  String get aiSpeakingVoiceConfigLabel => 'Voice model & timbre';
+
+  @override
+  String get aiSpeakingVoiceConfigHint =>
+      'ASR source, TTS model, voice, rate and realtime speech options are now stored per level. Pick the matching tab in Speaking Engine to adjust them.';
+
+  @override
+  String get aiSpeakingOpenSpeakingEngine => 'Open speaking engine';
+
+  @override
+  String get speakingEngineAdvancedNeedsCloudAsr =>
+      'The advanced level needs cloud streaming speech recognition; switch ASR to AI.';
 
   @override
   String get speakingEngineAsrNotReady =>

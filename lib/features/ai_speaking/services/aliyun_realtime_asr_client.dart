@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'package:uuid/uuid.dart';
 
 import '../models/ai_speaking_settings.dart';
+import 'realtime_socket.dart';
 
 class AsrTranscriptEvent {
   const AsrTranscriptEvent({required this.text, required this.isFinal});
@@ -51,33 +52,16 @@ abstract class RealtimeAsrClient {
   });
 }
 
-/// 实时识别使用的 WebSocket 抽象，隔离 dart:io 以便单元测试注入假连接。
-abstract class AsrSocket {
-  Stream<dynamic> get messages;
-
-  void add(dynamic data);
-
-  Future<void> close();
-}
-
-typedef WebSocketConnector = Future<AsrSocket> Function(
-  String url, {
-  Map<String, dynamic>? headers,
-});
-
 class AliyunRealtimeAsrClient implements RealtimeAsrClient {
   AliyunRealtimeAsrClient({WebSocketConnector? connector})
     : _connector = connector ?? _defaultConnector;
 
   final WebSocketConnector _connector;
 
-  static Future<AsrSocket> _defaultConnector(
+  static Future<RealtimeSocket> _defaultConnector(
     String url, {
     Map<String, dynamic>? headers,
-  }) async {
-    final socket = await WebSocket.connect(url, headers: headers);
-    return _WebSocketAsrSocket(socket);
-  }
+  }) => connectRealtimeSocket(url, headers: headers);
 
   @override
   Future<RealtimeAsrSession> start({
@@ -95,7 +79,7 @@ class AliyunRealtimeAsrClient implements RealtimeAsrClient {
       headers['X-DashScope-WorkSpace'] = workspace;
     }
 
-    AsrSocket socket;
+    RealtimeSocket socket;
     try {
       socket = await _connector(
         endpoint,
@@ -124,7 +108,7 @@ class _AliyunRealtimeAsrSession implements RealtimeAsrSession {
     _finished.future.ignore();
   }
 
-  final AsrSocket socket;
+  final RealtimeSocket socket;
   final AiSpeechConfig config;
   final _events = StreamController<AsrTranscriptEvent>.broadcast();
   final _started = Completer<void>();
@@ -132,8 +116,13 @@ class _AliyunRealtimeAsrSession implements RealtimeAsrSession {
 
   StreamSubscription<dynamic>? _subscription;
   String? _taskId;
-  String _finalBuffer = '';
-  String _latestText = '';
+
+  /// 已经收到 sentence_end 的完整句子，按顺序用空格拼接。
+  String _confirmedText = '';
+
+  /// 当前句最新文本：服务端可能返回整句覆盖，也可能只返回新增片段。
+  String _currentSentenceText = '';
+  String? _currentSentenceId;
   bool _closed = false;
 
   @override
@@ -213,12 +202,12 @@ class _AliyunRealtimeAsrSession implements RealtimeAsrSession {
     await _close();
   }
 
-  String _finalText() {
-    if (_finalBuffer.trim().isEmpty && _latestText.trim().isNotEmpty) {
-      _finalBuffer = _latestText.trim();
-    }
-    return _finalBuffer.trim();
-  }
+  /// 返回本轮完整转写。
+  ///
+  /// 不能只依赖 sentence_end：本地 VAD 的尾静音判定与云端 max_sentence_silence
+  /// 是两条独立的计时，收尾时服务端常常还没来得及给出最终结果。这里把已确认
+  /// 句子与当前句的最新文本一起返回，避免只把最后一个中间片段交给大模型。
+  String _finalText() => _joinText(_confirmedText, _currentSentenceText);
 
   void _handleMessage(dynamic message) {
     if (message is! String) return;
@@ -261,15 +250,94 @@ class _AliyunRealtimeAsrSession implements RealtimeAsrSession {
     // 心跳包只用于保活，不携带有效识别文本，直接跳过。
     if (sentence['heartbeat'] == true) return;
     final text = sentence['text']?.toString().trim() ?? '';
-    if (text.isEmpty) return;
+    final sentenceId = sentence['sentence_id']?.toString();
+    final startsSentence = sentence['sentence_begin'] == true;
     final isFinal = sentence['sentence_end'] == true;
-    _latestText = text;
-    if (isFinal) {
-      _finalBuffer = _finalBuffer.isEmpty ? text : '$_finalBuffer $text';
-      _events.add(AsrTranscriptEvent(text: text, isFinal: true));
+    final switchedSentence =
+        sentenceId != null &&
+        _currentSentenceId != null &&
+        sentenceId != _currentSentenceId;
+    if (startsSentence || switchedSentence) {
+      _commitCurrentSentence();
+      _currentSentenceId = sentenceId;
     } else {
-      _events.add(AsrTranscriptEvent(text: text, isFinal: false));
+      _currentSentenceId ??= sentenceId;
     }
+    if (text.isNotEmpty) {
+      // 最终结果携带整句文本，直接以它为准；中间结果才走合并，兼容
+      // 「整句覆盖」与「增量片段」两种下发方式，避免同一句被重复拼接。
+      _currentSentenceText = isFinal
+          ? text
+          : _mergeSentenceText(_currentSentenceText, text);
+    }
+    if (isFinal) {
+      _commitCurrentSentence();
+      _events.add(AsrTranscriptEvent(text: _finalText(), isFinal: true));
+    } else {
+      _events.add(
+        AsrTranscriptEvent(
+          text: _joinText(_confirmedText, _currentSentenceText),
+          isFinal: false,
+        ),
+      );
+    }
+  }
+
+  /// 把当前句并入已确认文本，并开始下一句。
+  void _commitCurrentSentence() {
+    final text = _currentSentenceText.trim();
+    if (text.isNotEmpty) {
+      _confirmedText = _joinText(_confirmedText, text);
+    }
+    _currentSentenceText = '';
+    _currentSentenceId = null;
+  }
+
+  /// 合并同一句的两次结果，兼容「整句覆盖」与「增量片段」两种服务端行为。
+  static String _mergeSentenceText(String current, String incoming) {
+    final base = current.trim();
+    final next = incoming.trim();
+    if (base.isEmpty) return next;
+    if (next == base || base.endsWith(next)) return base;
+    if (next.startsWith(base) || next.contains(base)) return next;
+    final overlap = _suffixPrefixOverlap(base, next);
+    if (overlap >= 2) {
+      return _joinText(base, next.substring(overlap));
+    }
+    return _joinText(base, next);
+  }
+
+  /// 返回 base 的后缀与 next 的前缀重合长度。
+  static int _suffixPrefixOverlap(String base, String next) {
+    final max = base.length < next.length ? base.length : next.length;
+    for (var length = max; length > 0; length--) {
+      if (base.substring(base.length - length) == next.substring(0, length)) {
+        return length;
+      }
+    }
+    return 0;
+  }
+
+  /// 拼接识别文本：中文与英文标点之间不加空格，英文单词之间加空格。
+  static String _joinText(String left, String right) {
+    final a = left.trim();
+    final b = right.trim();
+    if (a.isEmpty) return b;
+    if (b.isEmpty) return a;
+    final needsSpace =
+        !_isCjk(a.codeUnitAt(a.length - 1)) &&
+        !_isCjk(b.codeUnitAt(0)) &&
+        !_noSpaceBefore.contains(b[0]);
+    return needsSpace ? '$a $b' : '$a$b';
+  }
+
+  static const _noSpaceBefore = <String>{',', '.', '!', '?', ';', ':', ')'};
+
+  static bool _isCjk(int codeUnit) {
+    return (codeUnit >= 0x3400 && codeUnit <= 0x9FFF) ||
+        (codeUnit >= 0xF900 && codeUnit <= 0xFAFF) ||
+        (codeUnit >= 0x3040 && codeUnit <= 0x30FF) ||
+        (codeUnit >= 0xAC00 && codeUnit <= 0xD7AF);
   }
 
   void _handleSocketError(Object error) {
@@ -307,19 +375,4 @@ class _AliyunRealtimeAsrSession implements RealtimeAsrSession {
     }
     await _events.close();
   }
-}
-
-class _WebSocketAsrSocket implements AsrSocket {
-  _WebSocketAsrSocket(this._socket);
-
-  final WebSocket _socket;
-
-  @override
-  Stream<dynamic> get messages => _socket;
-
-  @override
-  void add(dynamic data) => _socket.add(data);
-
-  @override
-  Future<void> close() => _socket.close();
 }

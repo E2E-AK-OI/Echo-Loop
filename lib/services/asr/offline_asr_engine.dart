@@ -13,6 +13,9 @@ enum AsrModelType {
 
   /// Whisper 系列（OpenAI），ONNX 格式，sherpa-onnx 加载。
   whisper,
+
+  /// SenseVoice 系列（FunASR），ONNX 格式，sherpa-onnx 加载。
+  senseVoice,
 }
 
 /// ASR 模型信息。

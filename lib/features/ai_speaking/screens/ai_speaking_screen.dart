@@ -7,9 +7,11 @@ import '../../../l10n/app_localizations.dart';
 import '../../../theme/app_theme.dart';
 import '../models/ai_speaking_message.dart';
 import '../models/ai_speaking_session_state.dart';
+import '../providers/ai_speaking_level_provider.dart';
 import '../providers/ai_speaking_session_controller.dart';
 import '../services/ai_speaking_permission_service.dart';
 import '../widgets/ai_speaking_composer.dart';
+import '../widgets/ai_speaking_level_selector.dart';
 import '../widgets/ai_speaking_message_bubble.dart';
 import '../widgets/ai_speaking_welcome.dart';
 import 'ai_speaking_settings_screen.dart';
@@ -136,6 +138,7 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
       (previous, next) => _handleStateChange(next),
     );
     final hasMessages = state.messages.isNotEmpty;
+    final level = ref.watch(aiSpeakingLevelProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -152,6 +155,23 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
             tooltip: l10n.speakingEngineSettingsTitle,
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(76),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.m,
+              0,
+              AppSpacing.m,
+              AppSpacing.s,
+            ),
+            child: AiSpeakingLevelSelector(
+              level: level,
+              onChanged: (next) => unawaited(
+                ref.read(aiSpeakingLevelProvider.notifier).setLevel(next),
+              ),
+            ),
+          ),
+        ),
       ),
       body: Column(
         children: [
@@ -188,6 +208,7 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
           ),
           AiSpeakingComposer(
             state: state,
+            level: level,
             textController: _textController,
             focusNode: _inputFocus,
             recordDuration: _recordDuration,
@@ -197,6 +218,8 @@ class _AiSpeakingScreenState extends ConsumerState<AiSpeakingScreen> {
             onCancelListening: _controller.cancelListening,
             onStopGenerating: _controller.stopGenerating,
             onStopSpeaking: _controller.stopSpeaking,
+            onStartSession: _controller.startSession,
+            onStopSession: _controller.stopSession,
           ),
         ],
       ),

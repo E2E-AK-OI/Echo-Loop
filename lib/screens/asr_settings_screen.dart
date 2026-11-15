@@ -19,7 +19,10 @@ import '../utils/download_failure_message.dart';
 
 /// 语音识别设置页。
 class AsrSettingsScreen extends ConsumerStatefulWidget {
-  const AsrSettingsScreen({super.key});
+  const AsrSettingsScreen({super.key, this.embedded = false});
+
+  /// 是否以内嵌形式展示（嵌入口语引擎页时不再套一层页面骨架）。
+  final bool embedded;
 
   @override
   ConsumerState<AsrSettingsScreen> createState() => _AsrSettingsScreenState();
@@ -50,52 +53,63 @@ class _AsrSettingsScreenState extends ConsumerState<AsrSettingsScreen> {
     final theme = Theme.of(context);
     final showBackendSelector = Platform.isIOS || Platform.isMacOS;
 
+    final content = <Widget>[
+      // 说明文字（轻量，无背景）
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.s,
+          0,
+          AppSpacing.s,
+          AppSpacing.m,
+        ),
+        child: Text(
+          l10n.speechRecognitionDescription,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+
+      _SectionLabel(text: l10n.asrEngine),
+      Card(
+        child: Column(
+          children: [
+            if (showBackendSelector) ...[
+              _buildBackendSelector(l10n, state, theme),
+            ] else ...[
+              ListTile(
+                title: Text(l10n.localSpeechRecognition),
+                subtitle: Text(l10n.asrBackendOfflineDescription),
+              ),
+            ],
+          ],
+        ),
+      ),
+
+      if (state.backend == AsrBackend.offline) ...[
+        const SizedBox(height: AppSpacing.m),
+        _SectionLabel(text: l10n.asrBackendOffline),
+        Card(child: _buildModelList(l10n, state, theme)),
+      ] else if (state.totalDownloadedModelBytes > 0) ...[
+        const SizedBox(height: AppSpacing.m),
+        Card(child: _buildDownloadedModelsStorageRow(l10n, state, theme)),
+      ],
+    ];
+
+    if (widget.embedded) {
+      return ListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: content,
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text(l10n.speechRecognition)),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.m),
-        children: [
-          // 说明文字（轻量，无背景）
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.s,
-              0,
-              AppSpacing.s,
-              AppSpacing.m,
-            ),
-            child: Text(
-              l10n.speechRecognitionDescription,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-
-          _SectionLabel(text: l10n.asrEngine),
-          Card(
-            child: Column(
-              children: [
-                if (showBackendSelector) ...[
-                  _buildBackendSelector(l10n, state, theme),
-                ] else ...[
-                  ListTile(
-                    title: Text(l10n.localSpeechRecognition),
-                    subtitle: Text(l10n.asrBackendOfflineDescription),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          if (state.backend == AsrBackend.offline) ...[
-            const SizedBox(height: AppSpacing.m),
-            _SectionLabel(text: l10n.asrBackendOffline),
-            Card(child: _buildModelList(l10n, state, theme)),
-          ] else if (state.totalDownloadedModelBytes > 0) ...[
-            const SizedBox(height: AppSpacing.m),
-            Card(child: _buildDownloadedModelsStorageRow(l10n, state, theme)),
-          ],
-        ],
+        children: content,
       ),
     );
   }
@@ -373,6 +387,7 @@ class _AsrSettingsScreenState extends ConsumerState<AsrSettingsScreen> {
   // ========== 工具方法 ==========
 
   static String _modelLabel(String modelId) {
+    if (modelId.contains('sense')) return 'Perfect';
     if (modelId.contains('tiny')) return 'Fast';
     if (modelId.contains('base')) return 'Balanced';
     if (modelId.contains('small')) return 'Accurate';
@@ -380,6 +395,7 @@ class _AsrSettingsScreenState extends ConsumerState<AsrSettingsScreen> {
   }
 
   static String _modelDescription(AppLocalizations l10n, String modelId) {
+    if (modelId.contains('sense')) return l10n.asrModelPerfectDescription;
     if (modelId.contains('tiny')) return l10n.asrModelFastDescription;
     if (modelId.contains('base')) return l10n.asrModelBalancedDescription;
     if (modelId.contains('small')) return l10n.asrModelAccurateDescription;
@@ -387,6 +403,7 @@ class _AsrSettingsScreenState extends ConsumerState<AsrSettingsScreen> {
   }
 
   static String _approxModelSizeText(AppLocalizations l10n, String modelId) {
+    if (modelId.contains('sense')) return l10n.speechModelApproxSize('250 MB');
     if (modelId.contains('tiny')) return l10n.speechModelApproxSize('100 MB');
     if (modelId.contains('base')) return l10n.speechModelApproxSize('150 MB');
     if (modelId.contains('small')) return l10n.speechModelApproxSize('360 MB');

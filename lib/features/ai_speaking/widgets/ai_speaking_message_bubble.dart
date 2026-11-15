@@ -85,6 +85,15 @@ class AiSpeakingMessageBubble extends StatelessWidget {
                         const _TypingIndicator()
                       else
                         Text('...', style: TextStyle(color: textColor)),
+                      if (!isUser && message.wasInterrupted)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            AppLocalizations.of(context)!.aiSpeakingInterrupted,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          ),
+                        ),
                       if (!isUser &&
                           message.status == AiSpeakingMessageStatus.done &&
                           onReplay != null)

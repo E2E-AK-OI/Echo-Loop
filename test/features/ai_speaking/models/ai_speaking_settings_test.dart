@@ -37,7 +37,7 @@ void main() {
       expect(settings.llm.reasoningEffort, AiReasoningEffort.none);
       expect(settings.speech.asrModel, AiSpeechConfig.defaultAsrModel);
       expect(settings.speech.ttsModel, AiSpeechConfig.defaultTtsModel);
-      expect(settings.speech.ttsVoice, AiSpeechConfig.defaultTtsVoice);
+      expect(settings.speech.ttsVoice, AiSpeechConfig.defaultFlashTtsVoice);
       expect(settings.speech.ttsRate, 1.0);
       expect(settings.speech.autoPlay, isTrue);
       expect(settings.speech.workspaceId, isEmpty);
@@ -109,9 +109,7 @@ void main() {
 
   group('AiSpeechConfig 音色目录', () {
     test('plus 提供官方四个旗舰音色', () {
-      final voices = AiSpeechConfig.voicesForModel(
-        AiSpeechConfig.defaultTtsModel,
-      );
+      final voices = AiSpeechConfig.voicesForModel(AiSpeechConfig.plusTtsModel);
 
       expect(voices.map((voice) => voice.value), <String>[
         'longanlingxin_v3.1',
@@ -184,7 +182,7 @@ void main() {
         AiSpeechConfig.flashTtsModel,
       ).first;
       final plusVoice = AiSpeechConfig.voicesForModel(
-        AiSpeechConfig.defaultTtsModel,
+        AiSpeechConfig.plusTtsModel,
       ).first;
 
       expect(flashVoice.displayLabel, 'Emily · 英式女声 (Emily_v3.1)');
@@ -201,7 +199,7 @@ void main() {
       );
       expect(
         AiSpeechConfig.resolveTtsVoice(
-          model: AiSpeechConfig.defaultTtsModel,
+          model: AiSpeechConfig.plusTtsModel,
           voice: AiSpeechConfig.defaultFlashTtsVoice,
         ),
         AiSpeechConfig.defaultTtsVoice,
@@ -298,6 +296,7 @@ void main() {
       final container = makeContainer(AiSpeakingSettings.defaults);
       final notifier = container.read(aiSpeakingSettingsProvider.notifier);
 
+      await notifier.setTtsModel(AiSpeechConfig.plusTtsModel);
       await notifier.setTtsModel(AiSpeechConfig.flashTtsModel);
 
       expect(

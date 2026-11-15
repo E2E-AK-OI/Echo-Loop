@@ -56,11 +56,14 @@ class _TtsAdapter implements HttpClientAdapter {
 
 AiSpeechConfig _speech() => const AiSpeechConfig(
   asrModel: AiSpeechConfig.defaultAsrModel,
-  ttsModel: AiSpeechConfig.defaultTtsModel,
+  ttsModel: AiSpeechConfig.plusTtsModel,
   ttsVoice: AiSpeechConfig.defaultTtsVoice,
   ttsRate: 1.0,
   autoPlay: true,
   workspaceId: '',
+  realtimeModel: AiSpeechConfig.defaultRealtimeModel,
+  realtimeVoice: AiSpeechConfig.defaultRealtimeVoice,
+  realtimeTurnDetection: RealtimeTurnDetection.smartTurnV2,
 );
 
 void main() {
@@ -89,7 +92,7 @@ void main() {
     );
     expect(synthesisRequest.headers['Authorization'], 'Bearer dash-key');
     final body = synthesisRequest.data as Map<String, dynamic>;
-    expect(body['model'], AiSpeechConfig.defaultTtsModel);
+    expect(body['model'], AiSpeechConfig.plusTtsModel);
     final input = body['input'] as Map<String, dynamic>;
     expect(input['text'], 'Hello there');
     expect(input['voice'], AiSpeechConfig.defaultTtsVoice);

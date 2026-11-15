@@ -16,6 +16,13 @@ abstract class PcmRecorder {
     int numChannels = 1,
   });
 
+  /// 会话录音：使用 VOICE_COMMUNICATION 录音源，让平台 AEC 把外放 TTS
+  /// 当作回声参考。默认实现回退普通录音，便于非 Android 平台与测试替换。
+  Future<Stream<Uint8List>> startForVoiceCommunication({
+    int sampleRate = 16000,
+    int numChannels = 1,
+  }) => start(sampleRate: sampleRate, numChannels: numChannels);
+
   Future<void> stop();
 
   Future<void> dispose();
@@ -43,6 +50,29 @@ class RecordPcmRecorder implements PcmRecorder {
         autoGain: true,
         echoCancel: true,
         noiseSuppress: true,
+      ),
+    );
+  }
+
+  @override
+  Future<Stream<Uint8List>> startForVoiceCommunication({
+    int sampleRate = 16000,
+    int numChannels = 1,
+  }) {
+    return _recorder.startStream(
+      RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: sampleRate,
+        numChannels: numChannels,
+        // 外放插话用 duck 后的残留电平判断人声；AGC 会把衰减后的回声
+        // 重新放大，导致回声看起来像持续人声，因此这里必须关闭。
+        autoGain: false,
+        echoCancel: true,
+        noiseSuppress: true,
+        androidConfig: const AndroidRecordConfig(
+          audioSource: AndroidAudioSource.voiceCommunication,
+          audioManagerMode: AudioManagerMode.modeInCommunication,
+        ),
       ),
     );
   }

@@ -1,7 +1,7 @@
 # Echo Loop 项目规划
 
-> 最后更新：2026-11-12（AI 口语页设置入口改跳「口语引擎」；AI 设置新增 7 档推理强度与连通测试；录音话筒按输入电平动画；应用版本升至 1.02）
-> 当前焦点：端侧优先版本已完成回归与 Android APK 构建，待真机验收；上游 v1.0.46 的单词发音 CDN、查词静默发音、意群播放修复与 staticCdn 命名已合入；Edge 在线 TTS 已作为可选项加入（默认仍为本地 Kokoro）；AI 讲解与 AI 口语共用「设置 › AI 设置」的 BYOK 配置，口语练习的 ASR/TTS 可在「设置 › 口语引擎」中切换本地或 AI；历史遗留 Android 离线 ASR 结束录音闪退仍待定位；推理强度只对支持 reasoning_effort 的 OpenAI 兼容供应商生效，Android 录音电平已随 APK 构建验证，iOS 未在 Windows 环境编译
+> 最后更新：2026-11-15（修复高级档外放 duck 判别每次被误关闭：duck 收敛后的残留峰值不再回写参考基线，新增 180ms 收敛窗口与「残留达到参考峰值 70% 则关闭插话」判断；AI 口语高级档外放插话改为平台 AEC + duck 判别：外放时切换通话音频路由，VAD 保持静音，PCM 电平先压低 TTS 到 12%，180ms 收敛后观察 250ms，确认持续人声后才打断；平台 AEC 不可用时降级手动停止，耳机继续走 VAD 插话；此前已完成分句流式 TTS、三档默认 `qwen-audio-3.1-tts-flash`、高级档连续送流、TTS 排空与免提断句兜底）
+> 当前焦点：端侧优先版本已完成回归与 Android APK 构建，1.03.9 修复外放 duck 判别误关闭，待真机验收；上游 v1.0.46 的单词发音 CDN、查词静默发音、意群播放修复与 staticCdn 命名已合入；Edge 在线 TTS 已作为可选项加入（默认仍为本地 Kokoro）；AI 讲解与 AI 口语共用「设置 › AI 设置」的 BYOK 配置，口语练习的 ASR/TTS 可在「设置 › 口语引擎」中切换本地或 AI；历史遗留 Android 离线 ASR 结束录音闪退仍待定位；推理强度只对支持 reasoning_effort 的 OpenAI 兼容供应商生效；AI 口语四档、四项增强与分句 TTS 已完成（`test/features/ai_speaking` 全部通过），高级档从开始听音即连续送流修复开口丢词，TTS plus/flash 已支持 Android 流式 PCM，并在正常结束后等待 AudioTrack 排空（修复约 1 秒截断），新增非实时 ASR 与 SenseVoice Small perfect 伪流式；免提会话已补 2s 自适应硬上限、原生静音断句、云端句末收尾与 ASR 失败回退（受影响测试 250 项通过），待 Android 真机验收回声消除、EOS 手感、特级打断延迟与消息顺序；三档默认 TTS 已切到 flash，云端按句多 `continue-task`、本地逐句预合成，首句可在大模型生成中开始朗读；高级档外放插话改为平台 AEC + duck 判别：外放切通话音频路由，PCM 电平先压低 TTS 到 12%，180ms 收敛后仍有人声才确认打断，AEC 实际未压住回声时关闭插话，耳机继续走 VAD；分句只由首句启动一个 TTS 会话；非 Android 的云端 TTS 仍回退文件播放；iOS 未在 Windows 环境编译
 
 ## 产品目标
 
@@ -64,6 +64,7 @@ Echo Loop 是一个围绕“音频输入 + 句子级学习 + 间隔复习 + AI �
 - AI 对话助手（通用 chatbot 组件）：多轮对话式 AI 助手，一套可插拔组件接入不同位置（首接入点为句子讲解页；逐句精听 / 难句跟读 / 难句复习 / 收藏复习 4 个句子级任务页 AppBar 共享 `SentenceChatButton` 单一入口来源）。2026-11-05 起改为 BYOK 直连，移除登录、订阅与后端额度门。
 - 纯端侧改造（Android，2026-11-05）：移除账号/登录、订阅/权益、社区合集、精选播客与自建后端 AI/转录/聊天依赖；AI 讲解与 AI 口语改为 BYOK 直连；保留本地导入、本地学习、本地备份与 AI 口语。2026-11-06 恢复百度网盘导入入口，并将 OAuth 改为应用内简化模式（用户自填 AppKey），移除最后一个后端依赖。详见 [docs/on-device-architecture-plan.md](./docs/on-device-architecture-plan.md)。
 - AI 口语自由练习（Android）：BYOK 直连的开放式英语口语对话，支持 DeepSeek / 阿里云百炼 / OpenAI / 自定义 OpenAI 兼容供应商，Base URL、模型与温度可配；语音使用阿里云实时 ASR `qwen-audio-3.1-asr-flash-streaming` 与 TTS `qwen-audio-3.1-tts-plus`；已在学习页与设置页接入，2026-11-05 完成代码与测试（待 Android 真机手动验收）。规格见 [docs/ai-speaking-implementation-plan.md](./docs/ai-speaking-implementation-plan.md)。
+- AI 口语分档升级（2026-11-13）：初级保持按键说话；中级改为点话筒开始/结束的免提会话，本地 VAD 按尾静音 EOS 切分轮次（400–2000ms 可调，默认 800、兜底 2000），空闲 10–60s（默认 30）自动退出；高级允许用户插话打断，要求云端实时 ASR/TTS；特级使用阿里云语音到语音 `qwen-audio-3.1-realtime-flash`（服务端判停，模型/音色/判停方式在「AI 设置」配置），下行 24kHz PCM 由 Android AudioTrack 流式播放。2026-11-13 起「口语引擎」按四档标签隔离配置（识别/合成来源、TTS 模型与音色、实时语音参数、EOS 与空闲退出等），存储键追加档位后缀并回退旧全局键。2026-11-13 继续合并设置入口：设置页不再保留独立「语音识别」「语音合成」入口，两页完整内嵌到口语引擎页；AI 识别可选 3.0/3.1 实时流式与 qwen-audio-3.1-asr-flash 非实时模型，AI 合成可选模型与音色，均按档位持久化；同时修复特级消息顺序与高级流式 ASR 整句丢失。2026-11-13 四项增强：高级档改为开始听音即建连并连续送流，新增麦克风准备阶段；TTS plus/flash 改 WebSocket 流式 PCM（Android 边收边播）；新增非实时 ASR 整段上传；本地新增 SenseVoice Small perfect 伪流式。2026-11-13 修复流式 TTS 自然收尾：新增 `PcmStreamPlayer.finish()` 与原生 AudioTrack 排空线程，正常结束等播放头追上已写入帧数再释放，插话/停止仍立即 stop；版本 1.03.4+53。规格见 [docs/ai-speaking-levels-plan.md](./docs/ai-speaking-levels-plan.md)。
 
 ### ⛔ Milestone 5：支付订阅（已下线）
 

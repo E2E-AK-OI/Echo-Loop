@@ -118,6 +118,11 @@ final List<AsrModelInfo> availableModels = [
     displayName: 'Echo Loop AI (Accurate)',
     type: AsrModelType.whisper,
   ),
+  const AsrModelInfo(
+    id: senseVoiceSmallModelId,
+    displayName: 'Echo Loop AI (Perfect)',
+    type: AsrModelType.senseVoice,
+  ),
 ];
 
 enum AsrModelDownloadStatus { notDownloaded, downloading, downloaded, failed }
@@ -234,30 +239,52 @@ class AsrModelManager {
         status: AsrModelDownloadStatus.downloading,
       ),
     );
-    await _installer.install(
-      root: root,
-      target: target,
-      resourceId: modelId,
-      uri: baseUrlOverride == null
-          ? _endpointRouter.staticCdnUri('/model/${spec.archivePath}')
-          : Uri.parse('$baseUrlOverride/model/${spec.archivePath}'),
-      expectedSha256: spec.sha256,
-      cancelToken: cancelToken,
-      onProgress: (value) => onProgress?.call(
-        AsrModelDownloadProgress(
-          status: AsrModelDownloadStatus.downloading,
-          progress: value,
+    if (spec.isDirect) {
+      await _installer.installFiles(
+        root: root,
+        target: target,
+        resourceId: modelId,
+        files: spec.files,
+        cancelToken: cancelToken,
+        onProgress: (value) => onProgress?.call(
+          AsrModelDownloadProgress(
+            status: AsrModelDownloadStatus.downloading,
+            progress: value,
+          ),
         ),
-      ),
-      onInstalling: () => onProgress?.call(
-        const AsrModelDownloadProgress(
-          status: AsrModelDownloadStatus.downloading,
-          progress: 1,
+        onInstalling: () => onProgress?.call(
+          const AsrModelDownloadProgress(
+            status: AsrModelDownloadStatus.downloading,
+            progress: 1,
+          ),
         ),
-      ),
-      extractAndValidate: (archive, staging) =>
-          _extractAndValidate(archive, staging, spec),
-    );
+      );
+    } else {
+      await _installer.install(
+        root: root,
+        target: target,
+        resourceId: modelId,
+        uri: baseUrlOverride == null
+            ? _endpointRouter.staticCdnUri('/model/${spec.archivePath}')
+            : Uri.parse('$baseUrlOverride/model/${spec.archivePath}'),
+        expectedSha256: spec.sha256,
+        cancelToken: cancelToken,
+        onProgress: (value) => onProgress?.call(
+          AsrModelDownloadProgress(
+            status: AsrModelDownloadStatus.downloading,
+            progress: value,
+          ),
+        ),
+        onInstalling: () => onProgress?.call(
+          const AsrModelDownloadProgress(
+            status: AsrModelDownloadStatus.downloading,
+            progress: 1,
+          ),
+        ),
+        extractAndValidate: (archive, staging) =>
+            _extractAndValidate(archive, staging, spec),
+      );
+    }
     final result = await validateModel(modelId);
     if (!result.isValid) throw StateError(result.describe());
     onProgress?.call(

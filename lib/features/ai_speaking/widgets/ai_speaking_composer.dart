@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../theme/app_theme.dart';
+import '../models/ai_speaking_level.dart';
 import '../models/ai_speaking_session_state.dart';
 
 /// 底部输入与录音控制区。
@@ -9,6 +10,7 @@ class AiSpeakingComposer extends StatelessWidget {
   const AiSpeakingComposer({
     super.key,
     required this.state,
+    required this.level,
     required this.textController,
     required this.focusNode,
     required this.recordDuration,
@@ -18,9 +20,12 @@ class AiSpeakingComposer extends StatelessWidget {
     required this.onCancelListening,
     required this.onStopGenerating,
     required this.onStopSpeaking,
+    required this.onStartSession,
+    required this.onStopSession,
   });
 
   final AiSpeakingSessionState state;
+  final AiSpeakingLevel level;
   final TextEditingController textController;
   final FocusNode focusNode;
   final Duration recordDuration;
@@ -30,6 +35,8 @@ class AiSpeakingComposer extends StatelessWidget {
   final VoidCallback onCancelListening;
   final VoidCallback onStopGenerating;
   final VoidCallback onStopSpeaking;
+  final VoidCallback onStartSession;
+  final VoidCallback onStopSession;
 
   @override
   Widget build(BuildContext context) {
@@ -52,23 +59,129 @@ class AiSpeakingComposer extends StatelessWidget {
             AppSpacing.m,
             AppSpacing.s,
           ),
-          child: switch (state.phase) {
-            AiSpeakingPhase.listening => _buildListening(context, l10n),
-            AiSpeakingPhase.finalizing => _buildBusy(
-              context,
-              l10n.aiSpeakingFinalizing,
-            ),
-            AiSpeakingPhase.thinking => _buildThinking(context, l10n),
-            AiSpeakingPhase.speaking => _buildSpeaking(context, l10n),
-            AiSpeakingPhase.idle ||
-            AiSpeakingPhase.error => _buildInput(context, l10n),
-          },
+          child: level.usesContinuousSession
+              ? _buildSession(context, l10n)
+              : _buildPushToTalk(context, l10n),
         ),
       ),
     );
   }
 
-  Widget _buildInput(BuildContext context, AppLocalizations l10n) {
+  /// 按键说话档位：每轮手动开始与结束。
+  Widget _buildPushToTalk(BuildContext context, AppLocalizations l10n) {
+    return switch (state.phase) {
+      AiSpeakingPhase.preparing => _buildBusy(
+        context,
+        l10n.aiSpeakingPreparing,
+      ),
+      AiSpeakingPhase.listening => _buildListening(context, l10n),
+      AiSpeakingPhase.finalizing => _buildBusy(
+        context,
+        l10n.aiSpeakingFinalizing,
+      ),
+      AiSpeakingPhase.thinking => _buildThinking(context, l10n),
+      AiSpeakingPhase.speaking => _buildSpeaking(context, l10n),
+      AiSpeakingPhase.idle ||
+      AiSpeakingPhase.error => _buildInput(context, l10n),
+    };
+  }
+
+  /// 免提会话档位：点一次开始、再点一次结束，轮次由 VAD 自动切分。
+  Widget _buildSession(BuildContext context, AppLocalizations l10n) {
+    return switch (state.phase) {
+      AiSpeakingPhase.preparing => _buildSessionPreparing(context, l10n),
+      AiSpeakingPhase.listening => _buildSessionListening(context, l10n),
+      AiSpeakingPhase.finalizing => _buildBusy(
+        context,
+        l10n.aiSpeakingFinalizing,
+      ),
+      AiSpeakingPhase.thinking => _buildThinking(context, l10n),
+      AiSpeakingPhase.speaking => _buildSpeaking(context, l10n),
+      AiSpeakingPhase.idle ||
+      AiSpeakingPhase.error => _buildSessionIdle(context, l10n),
+    };
+  }
+
+  /// 会话未开始时仍可文字提问，麦克风按钮换成「开始对话」。
+  Widget _buildSessionIdle(BuildContext context, AppLocalizations l10n) {
+    return _buildInput(
+      context,
+      l10n,
+      trailing: FilledButton.icon(
+        onPressed: onStartSession,
+        icon: const Icon(Icons.mic_rounded, size: 20),
+        label: Text(l10n.aiSpeakingSessionStart),
+        style: FilledButton.styleFrom(
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+        ),
+      ),
+    );
+  }
+
+  /// 麦克风与识别连接尚未就绪：显示准备状态，并允许随时结束会话。
+  Widget _buildSessionPreparing(BuildContext context, AppLocalizations l10n) {
+    return Row(
+      children: [
+        const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: AppSpacing.m),
+        Expanded(child: Text(l10n.aiSpeakingPreparing)),
+        OutlinedButton(
+          onPressed: onStopSession,
+          child: Text(l10n.aiSpeakingSessionStop),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSessionListening(BuildContext context, AppLocalizations l10n) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        _ListeningIndicator(level: state.inputLevel),
+        const SizedBox(width: AppSpacing.m),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.aiSpeakingSessionActive,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                state.partialTranscript.isEmpty
+                    ? l10n.aiSpeakingSessionHint
+                    : state.partialTranscript,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.label(context),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        OutlinedButton(
+          onPressed: onStopSession,
+          child: Text(l10n.aiSpeakingSessionStop),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInput(
+    BuildContext context,
+    AppLocalizations l10n, {
+    Widget? trailing,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -114,18 +227,19 @@ class AiSpeakingComposer extends StatelessWidget {
           },
         ),
         const SizedBox(width: AppSpacing.xs),
-        SizedBox(
-          width: 52,
-          height: 52,
-          child: FilledButton(
-            onPressed: onStartListening,
-            style: FilledButton.styleFrom(
-              padding: EdgeInsets.zero,
-              shape: const CircleBorder(),
+        trailing ??
+            SizedBox(
+              width: 52,
+              height: 52,
+              child: FilledButton(
+                onPressed: onStartListening,
+                style: FilledButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  shape: const CircleBorder(),
+                ),
+                child: const Icon(Icons.mic_rounded, size: 24),
+              ),
             ),
-            child: const Icon(Icons.mic_rounded, size: 24),
-          ),
-        ),
       ],
     );
   }
@@ -193,11 +307,48 @@ class AiSpeakingComposer extends StatelessWidget {
 
   Widget _buildSpeaking(BuildContext context, AppLocalizations l10n) {
     final colorScheme = Theme.of(context).colorScheme;
+    // 高级档允许插话：朗读期间提示用户可以直接开口打断。
+    final canBargeIn =
+        level.allowsBargeIn &&
+        state.isSessionActive &&
+        state.isVoiceBargeInAvailable;
+    final bargeInUnavailable =
+        level.allowsBargeIn &&
+        state.isSessionActive &&
+        !state.isVoiceBargeInAvailable;
     return Row(
       children: [
         Icon(Icons.volume_up_rounded, color: colorScheme.primary),
         const SizedBox(width: AppSpacing.m),
-        Expanded(child: Text(l10n.aiSpeakingSpeaking)),
+        Expanded(
+          child: canBargeIn
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(l10n.aiSpeakingSpeaking),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.aiSpeakingBargeInHint,
+                      style: AppTextStyles.label(context),
+                    ),
+                  ],
+                )
+              : bargeInUnavailable
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(l10n.aiSpeakingSpeaking),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.aiSpeakingBargeInUnavailableHint,
+                      style: AppTextStyles.label(context),
+                    ),
+                  ],
+                )
+              : Text(l10n.aiSpeakingSpeaking),
+        ),
         TextButton(onPressed: onStopSpeaking, child: Text(l10n.aiSpeakingStop)),
       ],
     );

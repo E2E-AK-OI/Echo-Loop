@@ -47,6 +47,36 @@ Future<RuntimeEndpointRouter> _routerWithChinaCdn() async {
   return router..updateFromUserRegion(isChinaUser: true);
 }
 
+class _PayloadMapAdapter implements HttpClientAdapter {
+  _PayloadMapAdapter(this.payloads, {this.requestUris});
+
+  final Map<String, List<int>> payloads;
+  final List<Uri>? requestUris;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? _,
+    Future<void>? __,
+  ) async {
+    requestUris?.add(options.uri);
+    final payload = payloads[options.uri.path];
+    if (payload == null) {
+      return ResponseBody(Stream.value(Uint8List(0)), 404);
+    }
+    return ResponseBody(
+      Stream.value(Uint8List.fromList(payload)),
+      200,
+      headers: {
+        'content-length': [payload.length.toString()],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 class _RangeAdapter implements HttpClientAdapter {
   _RangeAdapter(this.payload);
 
@@ -91,15 +121,107 @@ class _RangeAdapter implements HttpClientAdapter {
 void main() {
   test('发布目录使用 v1 归档及实测摘要', () {
     expect(
-      asrModelResourceCatalog.values.every(
-        (spec) => spec.archivePath.endsWith('-v1.zip'),
-      ),
+      asrModelResourceCatalog.values
+          .where((spec) => !spec.isDirect)
+          .every((spec) => spec.archivePath.endsWith('-v1.zip')),
       isTrue,
     );
     expect(
       asrModelResourceCatalog['whisper-base-en-int8']!.sha256,
       'ff8af5965f6d017ad317e9a7c023c3f457259cef3de33e543c2fa87338a32fbb',
     );
+  });
+
+  test('直链资源逐文件安装并校验摘要', () async {
+    final root = await Directory.systemTemp.createTemp('asr-direct-test');
+    addTearDown(() => root.delete(recursive: true));
+    final modelBytes = Uint8List.fromList([1, 2, 3, 4]);
+    final tokensBytes = Uint8List.fromList([5, 6, 7]);
+    final requestedUris = <Uri>[];
+    final dio = Dio()
+      ..httpClientAdapter = _PayloadMapAdapter({
+        '/test/model.int8.onnx': modelBytes,
+        '/test/tokens.txt': tokensBytes,
+      }, requestUris: requestedUris);
+    final manager = AsrModelManager(
+      dio: dio,
+      modelsRootResolver: () async => p.join(root.path, 'models'),
+      resourceRegistryOverride: {
+        'direct-model': AsrModelResourceSpec(
+          id: 'direct-model',
+          estimatedDownloadBytes: modelBytes.length + tokensBytes.length,
+          requiredFiles: const ['model.int8.onnx', 'tokens.txt'],
+          files: [
+            AsrModelFileDownload(
+              fileName: 'model.int8.onnx',
+              uri: 'https://hf-mirror.com/test/model.int8.onnx',
+              sha256: sha256.convert(modelBytes).toString(),
+              sizeBytes: modelBytes.length,
+            ),
+            AsrModelFileDownload(
+              fileName: 'tokens.txt',
+              uri: 'https://hf-mirror.com/test/tokens.txt',
+              sha256: sha256.convert(tokensBytes).toString(),
+              sizeBytes: tokensBytes.length,
+            ),
+          ],
+        ),
+      },
+    );
+    final progress = <double>[];
+    await manager.downloadModel(
+      'direct-model',
+      onProgress: (value) => progress.add(value.progress),
+    );
+    final modelDir = await manager.modelDir('direct-model');
+    expect(
+      File(p.join(modelDir, 'model.int8.onnx')).readAsBytesSync(),
+      modelBytes,
+    );
+    expect(File(p.join(modelDir, 'tokens.txt')).readAsBytesSync(), tokensBytes);
+    expect(await manager.isModelDownloaded('direct-model'), isTrue);
+    expect(
+      (await manager.readInstallManifest('direct-model'))!.resourceId,
+      'direct-model',
+    );
+    expect(progress.last, 1);
+    expect(
+      requestedUris.map((uri) => uri.path),
+      containsAll(['/test/model.int8.onnx', '/test/tokens.txt']),
+    );
+    manager.dispose();
+  });
+
+  test('直链资源摘要不匹配时不写入安装清单', () async {
+    final root = await Directory.systemTemp.createTemp('asr-direct-sha-test');
+    addTearDown(() => root.delete(recursive: true));
+    final payload = Uint8List.fromList([1, 2, 3]);
+    final manager = AsrModelManager(
+      dio: Dio()
+        ..httpClientAdapter = _PayloadMapAdapter({'/test/model.onnx': payload}),
+      modelsRootResolver: () async => p.join(root.path, 'models'),
+      resourceRegistryOverride: {
+        'direct-model': AsrModelResourceSpec(
+          id: 'direct-model',
+          estimatedDownloadBytes: payload.length,
+          requiredFiles: const ['model.onnx'],
+          files: [
+            AsrModelFileDownload(
+              fileName: 'model.onnx',
+              uri: 'https://hf-mirror.com/test/model.onnx',
+              sha256: sha256.convert([9, 9, 9]).toString(),
+              sizeBytes: payload.length,
+            ),
+          ],
+        ),
+      },
+    );
+    await expectLater(
+      manager.downloadModel('direct-model'),
+      throwsA(isA<StateError>()),
+    );
+    expect(await manager.isModelDownloaded('direct-model'), isFalse);
+    manager.dispose();
   });
 
   test('归档安装写入清单并扁平化顶层目录', () async {
@@ -159,9 +281,9 @@ void main() {
       expect(progress[i], greaterThanOrEqualTo(progress[i - 1]));
     }
     expect(staleStaging.existsSync(), isFalse);
-    final remainingEntities = await Directory(
-      p.join(root.path, 'models'),
-    ).list().toList();
+    final remainingEntities = await Directory(p.join(root.path, 'models'))
+        .list()
+        .toList();
     expect(
       remainingEntities.where(
         (entity) => p.basename(entity.path).startsWith('_staging_'),
@@ -305,9 +427,8 @@ void main() {
     );
     await manager.downloadModel('test-model');
     expect(
-      File(
-        p.join(await manager.modelDir('test-model'), 'encoder.onnx'),
-      ).existsSync(),
+      File(p.join(await manager.modelDir('test-model'), 'encoder.onnx'))
+          .existsSync(),
       isTrue,
     );
     manager.dispose();
@@ -343,9 +464,8 @@ void main() {
     );
     await manager.downloadModel('test-model');
     expect(
-      File(
-        p.join(await manager.modelDir('test-model'), 'encoder.onnx'),
-      ).existsSync(),
+      File(p.join(await manager.modelDir('test-model'), 'encoder.onnx'))
+          .existsSync(),
       isTrue,
     );
     manager.dispose();

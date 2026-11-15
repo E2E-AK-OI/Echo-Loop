@@ -9,9 +9,10 @@ import 'dart:convert';
 
 import 'package:echo_loop/features/ai_speaking/models/ai_speaking_settings.dart';
 import 'package:echo_loop/features/ai_speaking/services/aliyun_realtime_asr_client.dart';
+import 'package:echo_loop/features/ai_speaking/services/realtime_socket.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _FakeAsrSocket implements AsrSocket {
+class _FakeAsrSocket implements RealtimeSocket {
   final _controller = StreamController<dynamic>();
   final sent = <Map<String, dynamic>>[];
   var closed = false;
@@ -42,6 +43,9 @@ const _config = AiSpeechConfig(
   ttsRate: 1,
   autoPlay: true,
   workspaceId: 'ws-test',
+  realtimeModel: AiSpeechConfig.defaultRealtimeModel,
+  realtimeVoice: AiSpeechConfig.defaultRealtimeVoice,
+  realtimeTurnDetection: RealtimeTurnDetection.smartTurnV2,
 );
 
 Map<String, dynamic> _event(String name, [Map<String, dynamic>? payload]) => {
@@ -57,16 +61,31 @@ Map<String, dynamic> _sentence(
   String text, {
   required bool sentenceEnd,
   bool heartbeat = false,
+  int sentenceId = 1,
+  bool sentenceBegin = false,
 }) => {
   'output': {
     'sentence': {
       'text': text,
       'sentence_end': sentenceEnd,
-      'sentence_id': heartbeat ? 0 : 1,
+      'sentence_begin': sentenceBegin,
+      'sentence_id': heartbeat ? 0 : sentenceId,
       'heartbeat': heartbeat,
     },
   },
 };
+
+Future<({RealtimeAsrSession session, _FakeAsrSocket socket})>
+_startSession() async {
+  final socket = _FakeAsrSocket();
+  final client = AliyunRealtimeAsrClient(
+    connector: (url, {headers}) async => socket,
+  );
+  final startFuture = client.start(config: _config, apiKey: 'asr-key');
+  await pumpEventQueue();
+  socket.emit(_event('task-started'));
+  return (session: await startFuture, socket: socket);
+}
 
 void main() {
   test('run-task 携带工作空间地址、鉴权头与识别参数', () async {
@@ -144,6 +163,67 @@ void main() {
     expect(finishTask['header']['streaming'], 'duplex');
     expect(finishTask['payload']['input'], isEmpty);
     expect(socket.closed, isTrue);
+  });
+
+  test('中间结果按增量下发且没有最终包时保留整句前文', () async {
+    final (:session, :socket) = await _startSession();
+
+    socket.emit(_event('result-generated', _sentence('你', sentenceEnd: false)));
+    socket.emit(_event('result-generated', _sentence('好', sentenceEnd: false)));
+    await pumpEventQueue();
+
+    final finishFuture = session.finish();
+    socket.emit(_event('task-finished'));
+
+    expect(await finishFuture, '你好');
+  });
+
+  test('最终结果按整句覆盖，不重复拼接中间增量片段', () async {
+    final (:session, :socket) = await _startSession();
+
+    socket.emit(
+      _event('result-generated', _sentence('Hel', sentenceEnd: false)),
+    );
+    socket.emit(
+      _event('result-generated', _sentence('lo', sentenceEnd: false)),
+    );
+    socket.emit(
+      _event('result-generated', _sentence('Hello', sentenceEnd: true)),
+    );
+    await pumpEventQueue();
+
+    final finishFuture = session.finish();
+    socket.emit(_event('task-finished'));
+
+    expect(await finishFuture, 'Hello');
+  });
+
+  test('跨句按 sentence_id 切换并把前句并入完整转写', () async {
+    final (:session, :socket) = await _startSession();
+
+    socket.emit(
+      _event(
+        'result-generated',
+        _sentence('Hello', sentenceEnd: true, sentenceId: 1),
+      ),
+    );
+    socket.emit(
+      _event(
+        'result-generated',
+        _sentence(
+          'World',
+          sentenceEnd: false,
+          sentenceId: 2,
+          sentenceBegin: true,
+        ),
+      ),
+    );
+    await pumpEventQueue();
+
+    final finishFuture = session.finish();
+    socket.emit(_event('task-finished'));
+
+    expect(await finishFuture, 'Hello World');
   });
 
   test('task-failed 将错误传给调用方', () async {

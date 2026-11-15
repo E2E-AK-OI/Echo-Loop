@@ -114,6 +114,43 @@ class AiSpeakingSettingsNotifier extends Notifier<AiSpeakingSettings> {
     await _persistString(AiSpeakingSettingsKeys.workspaceId, normalized);
   }
 
+  /// 切换特级档位实时模型；音色在新模型下不合法时自动回退默认音色。
+  Future<void> setRealtimeModel(String model) async {
+    final normalized = AiSpeechConfig.normalizeRealtimeModel(model.trim());
+    final previousVoice = state.speech.realtimeVoice;
+    final resolvedVoice = AiSpeechConfig.resolveRealtimeVoice(previousVoice);
+    state = state.copyWith(
+      speech: state.speech.copyWith(
+        realtimeModel: normalized,
+        realtimeVoice: resolvedVoice,
+      ),
+    );
+    await _persistString(AiSpeakingSettingsKeys.realtimeModel, normalized);
+    if (resolvedVoice != previousVoice) {
+      await _persistString(AiSpeakingSettingsKeys.realtimeVoice, resolvedVoice);
+    }
+  }
+
+  Future<void> setRealtimeVoice(String voice) async {
+    final resolved = AiSpeechConfig.resolveRealtimeVoice(voice.trim());
+    state = state.copyWith(
+      speech: state.speech.copyWith(realtimeVoice: resolved),
+    );
+    await _persistString(AiSpeakingSettingsKeys.realtimeVoice, resolved);
+  }
+
+  Future<void> setRealtimeTurnDetection(
+    RealtimeTurnDetection turnDetection,
+  ) async {
+    state = state.copyWith(
+      speech: state.speech.copyWith(realtimeTurnDetection: turnDetection),
+    );
+    await _persistString(
+      AiSpeakingSettingsKeys.realtimeTurnDetection,
+      turnDetection.wireValue,
+    );
+  }
+
   Future<void> _persistString(String key, String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(key, value);

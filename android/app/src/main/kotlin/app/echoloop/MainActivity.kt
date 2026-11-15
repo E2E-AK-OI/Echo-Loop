@@ -16,6 +16,8 @@ class MainActivity : AudioServiceActivity() {
     private var speechPracticeHandler: AndroidSpeechPracticeHandler? = null
     private var audioDecodeHandler: AndroidAudioDecodeHandler? = null
     private var localAudioPicker: AndroidLocalAudioPicker? = null
+    private var pcmStreamPlayer: PcmStreamPlayerHandler? = null
+    private var voiceAudioSession: VoiceAudioSessionHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -63,6 +65,13 @@ class MainActivity : AudioServiceActivity() {
             this,
             flutterEngine.dartExecutor.binaryMessenger,
         )
+        pcmStreamPlayer = PcmStreamPlayerHandler(
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
+        voiceAudioSession = VoiceAudioSessionHandler(
+            this,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
@@ -78,6 +87,10 @@ class MainActivity : AudioServiceActivity() {
         audioDecodeHandler = null
         localAudioPicker?.dispose()
         localAudioPicker = null
+        pcmStreamPlayer?.dispose()
+        pcmStreamPlayer = null
+        voiceAudioSession?.dispose()
+        voiceAudioSession = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 

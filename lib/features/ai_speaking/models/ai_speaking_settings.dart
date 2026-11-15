@@ -15,11 +15,15 @@ abstract final class AiSpeakingSettingsKeys {
   static const llmModel = 'ai_speaking_llm_model';
   static const llmTemperature = 'ai_speaking_llm_temperature';
   static const llmReasoningEffort = 'ai_speaking_llm_reasoning_effort';
+  static const asrModel = 'ai_speaking_asr_model';
   static const ttsModel = 'ai_speaking_tts_model';
   static const ttsVoice = 'ai_speaking_tts_voice';
   static const ttsRate = 'ai_speaking_tts_rate';
   static const ttsAutoPlay = 'ai_speaking_tts_auto_play';
   static const workspaceId = 'ai_speaking_workspace_id';
+  static const realtimeModel = 'ai_speaking_realtime_model';
+  static const realtimeVoice = 'ai_speaking_realtime_voice';
+  static const realtimeTurnDetection = 'ai_speaking_realtime_turn_detection';
 }
 
 /// 推理强度档位，按 OpenAI 兼容接口的 `reasoning_effort` 取值排序。
@@ -49,6 +53,28 @@ enum AiReasoningEffort {
       if (effort.wireValue == value) return effort;
     }
     return none;
+  }
+}
+
+/// 特级档位语音到语音模型的轮次判定方式。
+///
+/// `smart_turn_v2` 融合声学与语义判断，推荐使用；`server_vad` 仅凭声学
+/// 静音时长判停，作为网络或语义判停异常时的兜底选项。
+enum RealtimeTurnDetection {
+  smartTurnV2('smart_turn_v2'),
+  serverVad('server_vad');
+
+  const RealtimeTurnDetection(this.wireValue);
+
+  /// `session.turn_detection.type` 的取值。
+  final String wireValue;
+
+  /// 读取持久化值，未知或缺失时回退到语义判停。
+  static RealtimeTurnDetection fromStorage(String? value) {
+    for (final option in values) {
+      if (option.wireValue == value) return option;
+    }
+    return smartTurnV2;
   }
 }
 
@@ -138,13 +164,50 @@ class AiSpeechConfig {
     required this.ttsRate,
     required this.autoPlay,
     required this.workspaceId,
+    required this.realtimeModel,
+    required this.realtimeVoice,
+    required this.realtimeTurnDetection,
   });
 
   static const defaultAsrModel = 'qwen-audio-3.1-asr-flash-streaming';
-  static const defaultTtsModel = 'qwen-audio-3.1-tts-plus';
+
+  /// 非实时识别模型：整段音频上传，服务端用 SSE 流式返回转写结果。
+  static const nonRealtimeAsrModel = 'qwen-audio-3.1-asr-flash';
+
+  /// 三个口语档位默认使用低延迟的 flash 模型；plus 保留为高音质选项。
+  static const plusTtsModel = 'qwen-audio-3.1-tts-plus';
   static const flashTtsModel = 'qwen-audio-3.1-tts-flash';
+  static const defaultTtsModel = flashTtsModel;
+
+  /// plus 模型的默认音色；flash 使用 [defaultFlashTtsVoice]。
   static const defaultTtsVoice = 'longanlingxin_v3.1';
+
+  /// flash 模型的默认音色，三档默认配置与旧设置迁移都使用它。
   static const defaultFlashTtsVoice = 'Emily_v3.1';
+
+  /// 特级档位默认使用 flash 实时语音到语音模型，成本与延迟更优。
+  static const defaultRealtimeModel = 'qwen-audio-3.1-realtime-flash';
+  static const realtimePlusModel = 'qwen-audio-3.1-realtime-plus';
+  static const defaultRealtimeVoice = 'longanqian_v3.1';
+
+  /// 云端语音识别可选模型：两个实时流式模型加一个非实时整段模型。
+  static const asrModels = <String>[
+    defaultAsrModel,
+    'qwen-audio-3.0-asr-flash-streaming',
+    nonRealtimeAsrModel,
+  ];
+
+  /// 非实时模型需要先攒完整段音频，再走 HTTP + SSE 转写。
+  static bool isBatchAsrModel(String model) => model == nonRealtimeAsrModel;
+
+  /// 云端 TTS 可选模型；音色列表随模型不同。
+  static const ttsModels = <String>[flashTtsModel, plusTtsModel];
+
+  /// 实时语音对话可选模型，未知模型统一回退到 flash。
+  static const realtimeModels = <String>[
+    defaultRealtimeModel,
+    realtimePlusModel,
+  ];
 
   /// 音色必须与模型匹配，跨模型使用会被 DashScope 拒绝。
   /// 来源：https://help.aliyun.com/zh/model-studio/qwen-audio-tts-voice-list
@@ -174,12 +237,38 @@ class AiSpeechConfig {
     AiTtsVoice(label: 'David', value: 'David_v3.1', accent: '美式男声'),
   ];
 
-  /// 当前支持的 TTS 模型，未知模型统一回退到 plus。
-  static String normalizeTtsModel(String model) {
-    return model == flashTtsModel ? flashTtsModel : defaultTtsModel;
+  /// 实时模型可用的系统音色：`longanqian_v3.1` 以及 tts-plus / tts-flash
+  /// 的全部音色（见官方「音色配置」）。
+  static List<AiTtsVoice> get realtimeVoices => <AiTtsVoice>[
+    const AiTtsVoice(label: '龙安谦', value: defaultRealtimeVoice),
+    ..._plusVoices,
+    ..._flashEnglishVoices,
+  ];
+
+  /// 未知实时模型回退到 flash，避免把非实时模型写进 WebSocket URL。
+  static String normalizeRealtimeModel(String model) {
+    return realtimeModels.contains(model) ? model : defaultRealtimeModel;
   }
 
-  /// 返回模型可用的音色；未知模型按 plus 处理，保证下拉始终有选项。
+  /// 音色与实时模型不匹配时回退到默认音色。
+  static String resolveRealtimeVoice(String voice) {
+    for (final option in realtimeVoices) {
+      if (option.value == voice) return voice;
+    }
+    return defaultRealtimeVoice;
+  }
+
+  /// 未知流式识别模型统一回退到 3.1，避免把非法模型名发给服务端。
+  static String normalizeAsrModel(String model) {
+    return asrModels.contains(model) ? model : defaultAsrModel;
+  }
+
+  /// 当前支持的 TTS 模型，未知模型统一回退到默认的 flash。
+  static String normalizeTtsModel(String model) {
+    return model == plusTtsModel ? plusTtsModel : defaultTtsModel;
+  }
+
+  /// 返回模型可用的音色；未知模型按 flash 处理，保证下拉始终有选项。
   static List<AiTtsVoice> voicesForModel(String model) {
     return normalizeTtsModel(model) == flashTtsModel
         ? _flashEnglishVoices
@@ -205,6 +294,11 @@ class AiSpeechConfig {
   final bool autoPlay;
   final String workspaceId;
 
+  /// 特级档位使用的语音到语音模型。
+  final String realtimeModel;
+  final String realtimeVoice;
+  final RealtimeTurnDetection realtimeTurnDetection;
+
   AiSpeechConfig copyWith({
     String? asrModel,
     String? ttsModel,
@@ -212,6 +306,9 @@ class AiSpeechConfig {
     double? ttsRate,
     bool? autoPlay,
     String? workspaceId,
+    String? realtimeModel,
+    String? realtimeVoice,
+    RealtimeTurnDetection? realtimeTurnDetection,
   }) {
     return AiSpeechConfig(
       asrModel: asrModel ?? this.asrModel,
@@ -220,6 +317,10 @@ class AiSpeechConfig {
       ttsRate: ttsRate ?? this.ttsRate,
       autoPlay: autoPlay ?? this.autoPlay,
       workspaceId: workspaceId ?? this.workspaceId,
+      realtimeModel: realtimeModel ?? this.realtimeModel,
+      realtimeVoice: realtimeVoice ?? this.realtimeVoice,
+      realtimeTurnDetection:
+          realtimeTurnDetection ?? this.realtimeTurnDetection,
     );
   }
 
@@ -231,7 +332,10 @@ class AiSpeechConfig {
         other.ttsVoice == ttsVoice &&
         other.ttsRate == ttsRate &&
         other.autoPlay == autoPlay &&
-        other.workspaceId == workspaceId;
+        other.workspaceId == workspaceId &&
+        other.realtimeModel == realtimeModel &&
+        other.realtimeVoice == realtimeVoice &&
+        other.realtimeTurnDetection == realtimeTurnDetection;
   }
 
   @override
@@ -243,6 +347,9 @@ class AiSpeechConfig {
       ttsRate,
       autoPlay,
       workspaceId,
+      realtimeModel,
+      realtimeVoice,
+      realtimeTurnDetection,
     );
   }
 }
@@ -264,10 +371,13 @@ class AiSpeakingSettings {
     speech: AiSpeechConfig(
       asrModel: AiSpeechConfig.defaultAsrModel,
       ttsModel: AiSpeechConfig.defaultTtsModel,
-      ttsVoice: AiSpeechConfig.defaultTtsVoice,
+      ttsVoice: AiSpeechConfig.defaultFlashTtsVoice,
       ttsRate: 1.0,
       autoPlay: true,
       workspaceId: '',
+      realtimeModel: AiSpeechConfig.defaultRealtimeModel,
+      realtimeVoice: AiSpeechConfig.defaultRealtimeVoice,
+      realtimeTurnDetection: RealtimeTurnDetection.smartTurnV2,
     ),
   );
 
@@ -292,11 +402,26 @@ class AiSpeakingSettings {
     final ttsModel = AiSpeechConfig.normalizeTtsModel(
       storedTtsModel.isEmpty ? AiSpeechConfig.defaultTtsModel : storedTtsModel,
     );
+    final defaultVoice = ttsModel == AiSpeechConfig.plusTtsModel
+        ? AiSpeechConfig.defaultTtsVoice
+        : AiSpeechConfig.defaultFlashTtsVoice;
     final ttsVoice = AiSpeechConfig.resolveTtsVoice(
       model: ttsModel,
-      voice: storedTtsVoice.isEmpty
-          ? AiSpeechConfig.defaultTtsVoice
-          : storedTtsVoice,
+      voice: storedTtsVoice.isEmpty ? defaultVoice : storedTtsVoice,
+    );
+    final realtimeModel = AiSpeechConfig.normalizeRealtimeModel(
+      prefs.getString(AiSpeakingSettingsKeys.realtimeModel)?.trim() ??
+          AiSpeechConfig.defaultRealtimeModel,
+    );
+    final storedRealtimeVoice =
+        prefs.getString(AiSpeakingSettingsKeys.realtimeVoice)?.trim() ?? '';
+    final realtimeVoice = AiSpeechConfig.resolveRealtimeVoice(
+      storedRealtimeVoice.isEmpty
+          ? AiSpeechConfig.defaultRealtimeVoice
+          : storedRealtimeVoice,
+    );
+    final realtimeTurnDetection = RealtimeTurnDetection.fromStorage(
+      prefs.getString(AiSpeakingSettingsKeys.realtimeTurnDetection),
     );
 
     return AiSpeakingSettings(
@@ -315,6 +440,9 @@ class AiSpeakingSettings {
         autoPlay: prefs.getBool(AiSpeakingSettingsKeys.ttsAutoPlay) ?? true,
         workspaceId:
             prefs.getString(AiSpeakingSettingsKeys.workspaceId)?.trim() ?? '',
+        realtimeModel: realtimeModel,
+        realtimeVoice: realtimeVoice,
+        realtimeTurnDetection: realtimeTurnDetection,
       ),
     );
   }

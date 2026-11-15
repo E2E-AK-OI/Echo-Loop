@@ -3620,6 +3620,12 @@ abstract class AppLocalizations {
   /// **'More accurate, but larger and slower.'**
   String get asrModelAccurateDescription;
 
+  /// No description provided for @asrModelPerfectDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tuned for speaking practice. Supports Chinese, English, Japanese, Korean, and Cantonese; about 250 MB download.'**
+  String get asrModelPerfectDescription;
+
   /// No description provided for @localSpeechRecognition.
   ///
   /// In en, this message translates to:
@@ -10478,6 +10484,12 @@ abstract class AppLocalizations {
   /// **'ASR Model'**
   String get aiSpeakingAsrModelLabel;
 
+  /// No description provided for @aiSpeakingAsrModelBatchSuffix.
+  ///
+  /// In en, this message translates to:
+  /// **'Non-realtime (upload after speaking)'**
+  String get aiSpeakingAsrModelBatchSuffix;
+
   /// No description provided for @aiSpeakingTtsModelLabel.
   ///
   /// In en, this message translates to:
@@ -10508,6 +10520,54 @@ abstract class AppLocalizations {
   /// **'Preview voice'**
   String get aiSpeakingPreview;
 
+  /// No description provided for @aiSpeakingRealtimeSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime Speech (Expert)'**
+  String get aiSpeakingRealtimeSection;
+
+  /// No description provided for @aiSpeakingRealtimeHintTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'End-to-end realtime speech'**
+  String get aiSpeakingRealtimeHintTitle;
+
+  /// No description provided for @aiSpeakingRealtimeHintBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The expert level hands recognition, dialog and speech synthesis to one realtime model, so replies play while they are generated. Audio goes straight from this device to Alibaba Cloud Bailian.'**
+  String get aiSpeakingRealtimeHintBody;
+
+  /// No description provided for @aiSpeakingRealtimeModelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime model'**
+  String get aiSpeakingRealtimeModelLabel;
+
+  /// No description provided for @aiSpeakingRealtimeVoiceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime voice'**
+  String get aiSpeakingRealtimeVoiceLabel;
+
+  /// No description provided for @aiSpeakingRealtimeTurnDetectionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn detection'**
+  String get aiSpeakingRealtimeTurnDetectionLabel;
+
+  /// No description provided for @aiSpeakingRealtimeTurnSmartV2.
+  ///
+  /// In en, this message translates to:
+  /// **'Semantic (recommended)'**
+  String get aiSpeakingRealtimeTurnSmartV2;
+
+  /// No description provided for @aiSpeakingRealtimeTurnServerVad.
+  ///
+  /// In en, this message translates to:
+  /// **'Silence (server VAD)'**
+  String get aiSpeakingRealtimeTurnServerVad;
+
   /// No description provided for @aiSpeakingPrivacyTitle.
   ///
   /// In en, this message translates to:
@@ -10531,6 +10591,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Microphone permission is required.'**
   String get aiSpeakingPermissionDenied;
+
+  /// No description provided for @aiSpeakingLevelSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation level'**
+  String get aiSpeakingLevelSection;
+
+  /// No description provided for @aiSpeakingLevelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Beginner keeps push-to-talk. Intermediate and above run a continuous hands-free session.'**
+  String get aiSpeakingLevelHint;
+
+  /// No description provided for @aiSpeakingLevelBeginner.
+  ///
+  /// In en, this message translates to:
+  /// **'Beginner'**
+  String get aiSpeakingLevelBeginner;
+
+  /// No description provided for @aiSpeakingLevelBeginnerDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Press to talk, press again to submit. The AI is never interrupted.'**
+  String get aiSpeakingLevelBeginnerDescription;
+
+  /// No description provided for @aiSpeakingLevelIntermediate.
+  ///
+  /// In en, this message translates to:
+  /// **'Intermediate'**
+  String get aiSpeakingLevelIntermediate;
+
+  /// No description provided for @aiSpeakingLevelIntermediateDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the mic once to start and again to stop. Voice activity detection takes turns automatically; the AI still cannot be interrupted.'**
+  String get aiSpeakingLevelIntermediateDescription;
+
+  /// No description provided for @aiSpeakingLevelAdvanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get aiSpeakingLevelAdvanced;
+
+  /// No description provided for @aiSpeakingLevelAdvancedDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'You may interrupt the AI while it speaks. Runs on cloud realtime speech models and needs a stable network.'**
+  String get aiSpeakingLevelAdvancedDescription;
+
+  /// No description provided for @aiSpeakingLevelExpert.
+  ///
+  /// In en, this message translates to:
+  /// **'Expert'**
+  String get aiSpeakingLevelExpert;
+
+  /// No description provided for @aiSpeakingLevelExpertDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'One speech-to-speech model listens, thinks and speaks. Turn detection is handled by the model.'**
+  String get aiSpeakingLevelExpertDescription;
+
+  /// No description provided for @aiSpeakingLevelPendingNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'The end-to-end speech model for this level is not wired up yet, so practice still uses push-to-talk.'**
+  String get aiSpeakingLevelPendingNotice;
+
+  /// No description provided for @aiSpeakingSessionStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start conversation'**
+  String get aiSpeakingSessionStart;
+
+  /// No description provided for @aiSpeakingSessionStop.
+  ///
+  /// In en, this message translates to:
+  /// **'End conversation'**
+  String get aiSpeakingSessionStop;
+
+  /// No description provided for @aiSpeakingSessionActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation in progress'**
+  String get aiSpeakingSessionActive;
+
+  /// No description provided for @aiSpeakingPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing microphone…'**
+  String get aiSpeakingPreparing;
+
+  /// No description provided for @aiSpeakingSessionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Speak naturally; the microphone stays on.'**
+  String get aiSpeakingSessionHint;
+
+  /// No description provided for @aiSpeakingBargeInHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Speak anytime to interrupt the AI.'**
+  String get aiSpeakingBargeInHint;
+
+  /// No description provided for @aiSpeakingBargeInUnavailableHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice interruption is unavailable on speaker. Tap Stop to end playback.'**
+  String get aiSpeakingBargeInUnavailableHint;
+
+  /// No description provided for @aiSpeakingInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'Interrupted'**
+  String get aiSpeakingInterrupted;
+
+  /// No description provided for @speakingDialogSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Dialog & session'**
+  String get speakingDialogSection;
+
+  /// No description provided for @speakingDialogEndOfSpeechLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'End-of-speech silence'**
+  String get speakingDialogEndOfSpeechLabel;
+
+  /// No description provided for @speakingDialogEndOfSpeechDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'How long you may pause before the turn counts as finished. Turns are force-closed at 2000 ms.'**
+  String get speakingDialogEndOfSpeechDescription;
+
+  /// No description provided for @speakingDialogEndOfSpeechValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} ms'**
+  String speakingDialogEndOfSpeechValue(String value);
+
+  /// No description provided for @speakingDialogIdleExitLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle exit'**
+  String get speakingDialogIdleExitLabel;
+
+  /// No description provided for @speakingDialogIdleExitDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'End the session automatically after this long without any user speech.'**
+  String get speakingDialogIdleExitDescription;
+
+  /// No description provided for @speakingDialogIdleExitValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} s'**
+  String speakingDialogIdleExitValue(String value);
+
+  /// No description provided for @speakingDialogBargeInLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Interruption sensitivity'**
+  String get speakingDialogBargeInLabel;
+
+  /// No description provided for @speakingDialogBargeInDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Higher sensitivity interrupts more easily but may trigger on speaker echo. Use Low on a speaker.'**
+  String get speakingDialogBargeInDescription;
+
+  /// No description provided for @speakingDialogBargeInLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low'**
+  String get speakingDialogBargeInLow;
+
+  /// No description provided for @speakingDialogBargeInMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium'**
+  String get speakingDialogBargeInMedium;
+
+  /// No description provided for @speakingDialogBargeInHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High'**
+  String get speakingDialogBargeInHigh;
 
   /// No description provided for @aiSpeakingOpenSettings.
   ///
@@ -10652,6 +10898,18 @@ abstract class AppLocalizations {
   /// **'Speech Synthesis'**
   String get speakingEngineTtsSection;
 
+  /// No description provided for @speakingEngineLocalAsrTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local speech recognition engine'**
+  String get speakingEngineLocalAsrTitle;
+
+  /// No description provided for @speakingEngineLocalTtsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local speech synthesis engine'**
+  String get speakingEngineLocalTtsTitle;
+
   /// No description provided for @speakingEngineLlmSection.
   ///
   /// In en, this message translates to:
@@ -10735,6 +10993,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open Speech Synthesis Settings'**
   String get speakingEngineOpenTtsSettings;
+
+  /// No description provided for @aiSpeakingVoiceConfigLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice model & timbre'**
+  String get aiSpeakingVoiceConfigLabel;
+
+  /// No description provided for @aiSpeakingVoiceConfigHint.
+  ///
+  /// In en, this message translates to:
+  /// **'ASR source, TTS model, voice, rate and realtime speech options are now stored per level. Pick the matching tab in Speaking Engine to adjust them.'**
+  String get aiSpeakingVoiceConfigHint;
+
+  /// No description provided for @aiSpeakingOpenSpeakingEngine.
+  ///
+  /// In en, this message translates to:
+  /// **'Open speaking engine'**
+  String get aiSpeakingOpenSpeakingEngine;
+
+  /// No description provided for @speakingEngineAdvancedNeedsCloudAsr.
+  ///
+  /// In en, this message translates to:
+  /// **'The advanced level needs cloud streaming speech recognition; switch ASR to AI.'**
+  String get speakingEngineAdvancedNeedsCloudAsr;
 
   /// No description provided for @speakingEngineAsrNotReady.
   ///

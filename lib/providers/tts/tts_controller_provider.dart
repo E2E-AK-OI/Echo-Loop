@@ -328,6 +328,20 @@ class TtsController extends Notifier<TtsControllerState> {
     );
   }
 
+  /// 为即将播放的回复预合成一句话，不改变当前播放状态。
+  ///
+  /// 预热失败只意味着正式播放时要重新合成，不影响对话本身，因此记录日志后
+  /// 直接返回。仅当协调器已配置时才有意义。
+  Future<void> prewarmForReply(String text) async {
+    final normalized = text.trim();
+    if (normalized.isEmpty || !_readyCoordinator.isConfigured) return;
+    try {
+      await _readyCoordinator.prewarmCurrent(normalized);
+    } catch (error, stackTrace) {
+      AppLogger.log('TtsController', '回复预热失败：$error\n$stackTrace');
+    }
+  }
+
   AudioPlaybackResult _resultForToken(int token, {required bool success}) {
     if (token != _speakingToken) return AudioPlaybackResult.cancelled;
     return success ? AudioPlaybackResult.completed : AudioPlaybackResult.failed;
