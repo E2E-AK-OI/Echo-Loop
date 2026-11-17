@@ -64,8 +64,43 @@
 - 📍 **Resume where you left off**: Automatically records your stage and current sentence, so you can pick up instantly — even 5-minute fragments count.
 - 📊 **Learning statistics**: Tracks practice time, input/output ratio, and unique vocabulary — see exactly how much you've practiced and spoken.
 - 🎙️ **AI shadowing evaluation**: Automatically aligns ASR results with the original text, highlights matched words, and gives a shadowing rating.
-- 🗣️ **AI speaking practice (Android)**: Talk freely in English with an AI partner that replies in real time; supports DeepSeek, Alibaba Cloud Bailian, OpenAI, and custom OpenAI-compatible providers with your own API key, configurable model and temperature, plus Alibaba Cloud speech recognition and voices.
+- 🗣️ **AI speaking practice (Android, BYOK)**: Four tiers of free conversation — Beginner press-to-talk, Intermediate VAD turn-taking, Advanced voice barge-in, and Expert speech-to-speech; LLM support for DeepSeek, Alibaba Cloud Bailian, OpenAI, and custom OpenAI-compatible providers; ASR and TTS can be cloud or on-device depending on the tier, with selectable TTS voices, and every tier keeps its own settings. See "AI speaking practice: four tiers" below.
 - 🎧 **Local audio import + offline subtitles**: Batch-import local audio, import existing subtitles, or generate subtitles with the on-device model.
+
+---
+
+## 🗣️ AI speaking practice: four tiers
+
+This is a complete module added in this fork, not just a chat box with a microphone attached: it makes four explicit choices about when you start talking, when your turn ends, whether you can interrupt the AI, and which speech models run the conversation. All four tiers share the same conversation screen, message history, and BYOK credentials; switching tiers does not wipe your settings.
+
+### Which tier should I use?
+
+| Tier | Start / end | Turn detection | Voice barge-in | Speech pipeline | Best for |
+|---|---|---|---|---|---|
+| **Beginner** | Tap the mic to talk, then tap Finish to submit | Manual submit | No | ASR / TTS on-device or cloud; LLM via BYOK | First conversations; thinking before speaking |
+| **Intermediate** | Tap Start conversation, then tap End conversation | Local VAD, end-of-speech silence | No | Same | Longer conversations without echo or network distractions |
+| **Advanced** | Same as Intermediate | Local VAD + barge-in detection | Yes, speak while the AI talks | Cloud realtime ASR + cloud TTS; LLM via BYOK | Real conversation timing on a stable network |
+| **Expert** | Tap Start conversation, then tap End conversation | Server-side (`smart_turn_v2`, or `server_vad` 800ms) | Yes | One speech-to-speech model, no ASR → LLM → TTS chain | Lowest latency and the most natural turn-taking |
+
+> Not sure? Start with Beginner to get comfortable speaking, move to Intermediate for longer conversations, use Advanced when you want to practice reacting to interruptions, and try Expert when your network and model access are ready.
+
+### Settings are isolated per tier
+
+The **Settings › Speaking Engine** page has four tabs: Beginner, Intermediate, Advanced, and Expert. **Switching tabs only edits that tier; it does not change the tier you are currently practicing with.**
+
+- Each tier stores its ASR source (AI / on-device), TTS source (AI / on-device), ASR model, TTS voice, speaking rate, autoplay, end-of-speech silence, idle exit, and barge-in sensitivity independently.
+- Configuration keys carry a tier suffix, such as `ai_speaking_tts_model_advanced` and `speaking_dialog_end_of_speech_ms_expert`; reads fall back from the tier key to the legacy global key and then to the default, so upgrades do not lose settings.
+- The LLM provider / model / temperature, DashScope key, and workspace are shared globally under **AI Settings**.
+- Non-Expert tiers offer recognition models such as `qwen-audio-3.1-asr-flash-streaming`, `qwen-audio-3.0-asr-flash-streaming`, and `qwen-audio-3.1-asr-flash`; TTS models are `qwen-audio-3.1-tts-flash` (the default recommendation) and `qwen-audio-3.1-tts-plus`, with selectable voices. Choosing on-device ASR in Advanced warns that cloud realtime ASR is required.
+- Expert hides the ASR / TTS source pickers and shows a realtime voice card instead: model `qwen-audio-3.1-realtime-flash` (default) / `qwen-audio-3.1-realtime-plus`, voice, and turn-detection strategy live in that card; changing the model falls back to a valid voice.
+
+### One shared conversation engine
+
+- **Turn-taking**: `VadTurnDetector` uses an adaptive energy threshold (the larger of the base threshold and noise floor × 3), 180ms debounce, and end-of-speech silence to decide when an utterance ends. End-of-speech silence is configurable from 400–2000ms, with a 2-second hard cap.
+- **Recognition**: cloud ASR streams continuously and replays up to 5 seconds of preroll audio to cover the gap before the connection is ready, so the first words are not lost; on-device recognition uses whole-utterance or near-streaming paths.
+- **Speech**: sentence-level streaming TTS splits the first sentence early; Android plays it through `PcmStreamPlayer` / AudioTrack as it arrives, cutting the wait for the first sentence.
+- **Barge-in**: on speaker output, Advanced first ducks the TTS volume and briefly mutes it to check whether the voice is really the user; if it cannot decide reliably, voice barge-in is disabled and manual stop remains, so speaker echo is never mistaken for input. Expert handles interruption server-side in the realtime model and discards late audio chunks by `response_id`.
+- **Recording**: AEC and noise suppression reduce speaker echo; barge-in mode disables AGC so ducked echo is not amplified again.
 
 ---
 
@@ -173,7 +208,7 @@ Everything is free — no account, subscription, or usage quota. AI features use
 <details>
 <summary><strong>Which features need my own API key?</strong></summary>
 
-AI translation, sentence analysis, sense-group splitting, word analysis, the AI study assistant, and AI speaking practice need an OpenAI-compatible provider API key configured in Settings. All local features work without a connection or a key.
+AI translation, sentence analysis, sense-group splitting, word analysis, the AI study assistant, and AI speaking practice (all four tiers) need an OpenAI-compatible provider API key configured in Settings. All local features work without a connection or a key.
 
 </details>
 
@@ -239,6 +274,13 @@ Yes. The learning flow, reviews, favorites, shadowing evaluation, on-device tran
 </details>
 
 <details>
+<summary><strong>Which AI speaking tier should I choose?</strong></summary>
+
+Beginner is for first conversations: speak, then submit. Intermediate keeps a conversation going with VAD turn-taking. Advanced lets you interrupt the AI by voice while it speaks and needs cloud realtime ASR and TTS. Expert runs one speech-to-speech model for a shorter, lower-latency path, provided your network and model access are ready. Settings are independent per tier, so you can switch without overwriting the others. See "AI speaking practice: four tiers" above.
+
+</details>
+
+<details>
 <summary><strong>Where is my data stored? What if I switch phones?</strong></summary>
 
 Your learning data is stored on your device. Before switching phones or reinstalling, export a backup from **Settings → Backup & Restore**, then restore it on the new device.
@@ -274,7 +316,7 @@ Practice English alongside other committed learners: share methods, give feedbac
 
 ### 🚧 2 · AI capabilities
 
-- [x] AI speaking practice (Android, BYOK)
+- [x] AI speaking practice, four tiers (Beginner / Intermediate / Advanced / Expert; Android, BYOK)
 - [x] AI learning assistant (on-demand Q&A)
 - [x] AI word lookup
 - [ ] Personalized material recommendations
